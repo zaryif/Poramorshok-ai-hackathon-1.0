@@ -70,13 +70,14 @@ const Header = React.forwardRef<HTMLHeadElement, HeaderProps>(
 									/>
 								</div>
 
-								{/* Theme-aware brand text */}
+								{/* Theme-aware brand text with language-aware font */}
 								<h1
-									className={`font-bold text-gray-800 dark:text-gray-200 transition-all duration-300 ${
+									className={`font-bold transition-all duration-300 ${
 										isScrolled ? "text-lg" : "text-xl"
-									}`}
+									} text-gray-800 dark:text-gray-200`}
 								>
-									পরামর্শক AI
+									<span class="font-hind">পরামর্শক</span>{" "}
+									<span class="font-inria">AI</span>
 								</h1>
 							</div>
 							<div className="flex-1 flex items-center justify-end gap-2">
