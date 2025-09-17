@@ -140,8 +140,9 @@ const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 
 	const handleLogout = async () => {
 		if (window.confirm(t("confirmLogout"))) {
-			const { error } = await signOut();
-			if (error) {
+			try {
+				await signOut();
+			} catch (error) {
 				console.error("Error signing out:", error);
 			}
 		}

@@ -267,6 +267,7 @@ ALTER TABLE health_advice ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can access their own profile" ON users FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update their own profile" ON users FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Users can delete their own profile" ON users FOR DELETE USING (auth.uid() = id);
+CREATE POLICY "Users can insert their own profile" ON users FOR INSERT WITH CHECK (auth.uid() = id);
 -- Add INSERT policy if needed
 
 -- All user-owned tables: Only allow access to own data
