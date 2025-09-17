@@ -1,4 +1,10 @@
-import React, { useState, useCallback, useRef, useLayoutEffect } from "react";
+import React, {
+	useState,
+	useCallback,
+	useRef,
+	useLayoutEffect,
+	useEffect,
+} from "react";
 import { View } from "./types";
 import Header from "./components/Header";
 import Chatbot from "./components/Chatbot";
@@ -11,6 +17,7 @@ import LoginSignup from "./components/LoginSignup";
 import FunFact from "./components/FunFact";
 import useScroll from "./hooks/useScroll";
 import { useReminders } from "./contexts/ReminderContext";
+import { useAuth } from "./src/contexts/AuthContext";
 import Icon from "./components/Icon";
 import { useLanguage } from "./hooks/useLanguage";
 
@@ -53,11 +60,24 @@ const InAppReminder: React.FC = () => {
 
 const App: React.FC = () => {
 	const [activeView, setActiveView] = useState<View>("chatbot");
+	const { user, session, loading } = useAuth();
 	const headerRef = useRef<HTMLHeadElement>(null);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [headerHeight, setHeaderHeight] = useState(80); // Default header height as fallback
 	const [isTransitioning, setIsTransitioning] = useState(false);
 	const { isScrolled, scrollDirection } = useScroll(scrollRef);
+
+	// Handle authentication state changes
+	useEffect(() => {
+		if (!loading) {
+			// Only redirect if user logs in while on login page
+			if (user && activeView === "login") {
+				// If logged in and on login page, redirect to main app
+				setActiveView("chatbot");
+			}
+			// Remove the forced redirect to login - let users use the app without auth
+		}
+	}, [user, loading, activeView]);
 
 	useLayoutEffect(() => {
 		const updateHeaderHeight = () => {
@@ -124,6 +144,19 @@ const App: React.FC = () => {
 	}, [activeView, headerHeight, isTransitioning]);
 
 	const renderView = useCallback(() => {
+		// If still loading authentication, show a loading state
+		if (loading) {
+			return (
+				<div className="flex items-center justify-center min-h-screen">
+					<div className="text-center">
+						<div className="animate-spin h-8 w-8 border-2 border-teal-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+						<p className="text-gray-600 dark:text-gray-400">Loading...</p>
+					</div>
+				</div>
+			);
+		}
+
+		// Allow users to use the app without authentication
 		switch (activeView) {
 			case "tracker":
 				return <HealthTracker key="tracker" />;
@@ -142,13 +175,13 @@ const App: React.FC = () => {
 				);
 			case "login":
 				return (
-					<LoginSignup key="login" onBack={() => setActiveView("settings")} />
+					<LoginSignup key="login" onBack={() => setActiveView("chatbot")} />
 				);
 			case "chatbot":
 			default:
 				return <Chatbot key="chatbot" />;
 		}
-	}, [activeView]);
+	}, [activeView, user, loading]);
 
 	return (
 		<div className="bg-gray-100 dark:bg-zinc-950 font-sans text-gray-900 dark:text-gray-300">

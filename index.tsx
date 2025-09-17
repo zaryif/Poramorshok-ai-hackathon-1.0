@@ -1,27 +1,40 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import { LanguageProvider } from './contexts/LanguageContext';
-import { ThemeProvider } from './contexts/ThemeContext';
-import { ReminderProvider } from './contexts/ReminderContext';
-import { UserProvider } from './contexts/UserContext';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import App from "./App";
+import { LanguageProvider } from "./contexts/LanguageContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import { ReminderProvider } from "./contexts/ReminderContext";
+import { AuthProvider } from "./src/contexts/AuthContext";
 
-const rootElement = document.getElementById('root');
+// Create a client
+const queryClient = new QueryClient({
+	defaultOptions: {
+		queries: {
+			staleTime: 1000 * 60 * 5, // 5 minutes
+			retry: 3,
+		},
+	},
+});
+
+const rootElement = document.getElementById("root");
 if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
+	throw new Error("Could not find root element to mount to");
 }
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(
-  <React.StrictMode>
-    <ThemeProvider>
-      <LanguageProvider>
-        <UserProvider>
-          <ReminderProvider>
-            <App />
-          </ReminderProvider>
-        </UserProvider>
-      </LanguageProvider>
-    </ThemeProvider>
-  </React.StrictMode>
+	<React.StrictMode>
+		<QueryClientProvider client={queryClient}>
+			<ThemeProvider>
+				<LanguageProvider>
+					<AuthProvider>
+						<ReminderProvider>
+							<App />
+						</ReminderProvider>
+					</AuthProvider>
+				</LanguageProvider>
+			</ThemeProvider>
+		</QueryClientProvider>
+	</React.StrictMode>
 );

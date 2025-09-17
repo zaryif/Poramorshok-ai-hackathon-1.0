@@ -254,9 +254,6 @@ const translations: { [lang in Language]: { [key: string]: string } } = {
 		oneUppercase: "One uppercase letter",
 		oneLowercase: "One lowercase letter",
 		oneNumber: "One number",
-		demoModeTitle: "Demo Mode",
-		demoModeDescription:
-			"This is a demonstration app. All authentication is simulated for preview purposes.",
 	},
 	bn: {
 		// Bengali translations
@@ -500,9 +497,6 @@ const translations: { [lang in Language]: { [key: string]: string } } = {
 		oneUppercase: "একটি বড় হাতের অক্ষর",
 		oneLowercase: "একটি ছোট হাতের অক্ষর",
 		oneNumber: "একটি সংখ্যা",
-		demoModeTitle: "ডেমো মোড",
-		demoModeDescription:
-			"এটি একটি প্রদর্শনী অ্যাপ। সমস্ত অনুমোদন প্রিভিউয়ের উদ্দেশ্যে সিমুলেট করা হয়েছে।",
 	},
 };
 

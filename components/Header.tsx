@@ -3,6 +3,7 @@ import { View } from "../types";
 import Icon from "./Icon";
 import { useLanguage } from "../hooks/useLanguage";
 import { useTheme } from "../contexts/ThemeContext";
+import { useAuth } from "../src/contexts/AuthContext";
 
 interface HeaderProps {
 	activeView: View;
@@ -15,6 +16,7 @@ const Header = React.forwardRef<HTMLHeadElement, HeaderProps>(
 	({ activeView, setActiveView, isScrolled, scrollDirection }, ref) => {
 		const { language, toggleLanguage, t } = useLanguage();
 		const { theme, toggleTheme } = useTheme();
+		const { user } = useAuth();
 
 		const navItems: { id: View; labelKey: string; icon: string }[] = [
 			{ id: "chatbot", labelKey: "aiAnalyzer", icon: "chat" },
@@ -99,6 +101,18 @@ const Header = React.forwardRef<HTMLHeadElement, HeaderProps>(
 								>
 									<Icon
 										name={theme === "light" ? "moon" : "sun"}
+										className="h-5 w-5"
+									/>
+								</button>
+								{/* User/Login button */}
+								<button
+									onClick={() => setActiveView(user ? "settings" : "login")}
+									className="h-9 w-9 flex items-center justify-center rounded-full text-sm font-semibold transition-colors duration-200 bg-gray-200/80 hover:bg-gray-300/80 text-gray-700 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 dark:text-gray-300"
+									aria-label={user ? t("settings") : t("login")}
+									title={user ? user.email || t("settings") : t("login")}
+								>
+									<Icon
+										name={user ? "user" : "login"}
 										className="h-5 w-5"
 									/>
 								</button>

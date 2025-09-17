@@ -1,0 +1,693 @@
+-- Complete database schema with RLS policies
+
+-- Enable necessary extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- User Profiles table
+CREATE TABLE IF NOT EXISTS user_profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name TEXT,
+    date_of_birth DATE,
+    gender TEXT CHECK (gender IN ('male', 'female', 'other')),
+    phone_number TEXT,
+    emergency_contact JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    UNIQUE(user_id)
+);
+
+-- Health Entries table for daily health tracking
+CREATE TABLE IF NOT EXISTS health_entries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    weight DECIMAL(5,2),
+    height DECIMAL(5,2),
+    blood_pressure JSONB, -- {systolic: 120, diastolic: 80}
+    heart_rate INTEGER,
+    blood_sugar DECIMAL(5,2),
+    temperature DECIMAL(4,2),
+    symptoms JSONB, -- Array of symptoms
+    mood TEXT,
+    energy_level INTEGER CHECK (energy_level >= 1 AND energy_level <= 10),
+    sleep_hours DECIMAL(4,2),
+    water_intake DECIMAL(5,2),
+    exercise_minutes INTEGER,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    UNIQUE(user_id, date)
+);
+
+-- Medical Records table
+CREATE TABLE IF NOT EXISTS medical_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    record_type TEXT NOT NULL CHECK (record_type IN ('report', 'prescription', 'diagnosis', 'allergy', 'vaccination', 'surgery', 'other')),
+    title TEXT NOT NULL,
+    description TEXT,
+    doctor_name TEXT,
+    hospital_clinic TEXT,
+    issue_date DATE,
+    file_url TEXT,
+    file_name TEXT,
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Prescriptions table
+CREATE TABLE IF NOT EXISTS prescriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    doctor_name TEXT NOT NULL,
+    hospital_clinic TEXT,
+    issue_date DATE NOT NULL,
+    valid_until DATE,
+    diagnosis TEXT,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Prescription Drugs table
+CREATE TABLE IF NOT EXISTS prescription_drugs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    prescription_id UUID REFERENCES prescriptions(id) ON DELETE CASCADE,
+    drug_name TEXT NOT NULL,
+    dosage TEXT NOT NULL,
+    frequency TEXT NOT NULL, -- e.g., "twice daily", "every 8 hours"
+    duration TEXT, -- e.g., "7 days", "2 weeks"
+    instructions TEXT,
+    drug_type TEXT, -- e.g., "antibiotic", "painkiller"
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Drug Reminder Times table
+CREATE TABLE IF NOT EXISTS drug_reminder_times (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    drug_id UUID REFERENCES prescription_drugs(id) ON DELETE CASCADE,
+    reminder_time TIME NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Insurance Information table
+CREATE TABLE IF NOT EXISTS insurance_info (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    provider_name TEXT NOT NULL,
+    policy_number TEXT NOT NULL,
+    group_number TEXT,
+    policy_holder_name TEXT,
+    relationship_to_holder TEXT,
+    coverage_details JSONB,
+    valid_from DATE,
+    valid_until DATE,
+    emergency_contact JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    UNIQUE(user_id)
+);
+
+-- Chat Sessions table
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    session_name TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Chat Messages table
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    message_text TEXT NOT NULL,
+    message_type TEXT NOT NULL CHECK (message_type IN ('user', 'assistant', 'system')),
+    metadata JSONB, -- For storing additional data like analysis results
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Symptom Analyses table
+CREATE TABLE IF NOT EXISTS symptom_analyses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_id UUID REFERENCES chat_messages(id) ON DELETE CASCADE,
+    symptoms_identified JSONB, -- Array of identified symptoms
+    severity_assessment TEXT CHECK (severity_assessment IN ('low', 'medium', 'high')),
+    recommendations JSONB, -- Array of recommendations
+    urgency_level TEXT CHECK (urgency_level IN ('routine', 'soon', 'urgent')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Diet Plans table
+CREATE TABLE IF NOT EXISTS diet_plans (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    plan_name TEXT NOT NULL,
+    description TEXT,
+    total_days INTEGER NOT NULL,
+    goals JSONB, -- Array of goals
+    dietary_restrictions JSONB, -- Array of restrictions
+    estimated_calories_per_day INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Diet Plan Days table
+CREATE TABLE IF NOT EXISTS diet_plan_days (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    diet_plan_id UUID REFERENCES diet_plans(id) ON DELETE CASCADE,
+    day_name TEXT NOT NULL,
+    day_order INTEGER NOT NULL,
+    daily_note TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Diet Plan Meals table
+CREATE TABLE IF NOT EXISTS diet_plan_meals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    diet_plan_day_id UUID REFERENCES diet_plan_days(id) ON DELETE CASCADE,
+    meal_name TEXT NOT NULL,
+    meal_order INTEGER NOT NULL,
+    meal_items JSONB NOT NULL, -- Array of meal items with nutritional info
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Exercise Plans table
+CREATE TABLE IF NOT EXISTS exercise_plans (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    plan_name TEXT NOT NULL,
+    description TEXT,
+    total_days INTEGER NOT NULL,
+    difficulty_level TEXT CHECK (difficulty_level IN ('beginner', 'intermediate', 'advanced')),
+    goals JSONB, -- Array of fitness goals
+    estimated_calories_per_day INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Exercise Plan Days table
+CREATE TABLE IF NOT EXISTS exercise_plan_days (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    exercise_plan_id UUID REFERENCES exercise_plans(id) ON DELETE CASCADE,
+    day_name TEXT NOT NULL,
+    day_order INTEGER NOT NULL,
+    focus TEXT, -- e.g., "Upper Body", "Cardio"
+    details TEXT,
+    total_duration INTEGER, -- in minutes
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Exercise Plan Exercises table
+CREATE TABLE IF NOT EXISTS exercise_plan_exercises (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    exercise_plan_day_id UUID REFERENCES exercise_plan_days(id) ON DELETE CASCADE,
+    exercise_name TEXT NOT NULL,
+    exercise_order INTEGER NOT NULL,
+    exercise_type TEXT CHECK (exercise_type IN ('strength', 'cardio', 'flexibility', 'balance')),
+    description TEXT,
+    duration TEXT, -- e.g., "30 minutes", "3 sets of 10 reps"
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Health Advice table for storing AI-generated health tips
+CREATE TABLE IF NOT EXISTS health_advice (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    advice_text TEXT NOT NULL,
+    advice_type TEXT, -- e.g., "general", "diet", "exercise", "mental_health"
+    language TEXT DEFAULT 'en',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_health_entries_user_date ON health_entries(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_medical_records_user_type ON medical_records(user_id, record_type);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_user_date ON prescriptions(user_id, issue_date);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_diet_plans_user ON diet_plans(user_id);
+CREATE INDEX IF NOT EXISTS idx_exercise_plans_user ON exercise_plans(user_id);
+
+-- Enable RLS and create policies for user profiles
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own profile" ON user_profiles
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own profile" ON user_profiles
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own profile" ON user_profiles
+    FOR UPDATE USING (auth.uid() = user_id);
+
+-- Health entries
+ALTER TABLE health_entries ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own health entries" ON health_entries
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own health entries" ON health_entries
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own health entries" ON health_entries
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own health entries" ON health_entries
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Medical records
+ALTER TABLE medical_records ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own medical records" ON medical_records
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own medical records" ON medical_records
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own medical records" ON medical_records
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own medical records" ON medical_records
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Prescriptions
+ALTER TABLE prescriptions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own prescriptions" ON prescriptions
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own prescriptions" ON prescriptions
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own prescriptions" ON prescriptions
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own prescriptions" ON prescriptions
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Prescription drugs (access through prescriptions)
+ALTER TABLE prescription_drugs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view drugs for their prescriptions" ON prescription_drugs
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM prescriptions 
+            WHERE prescriptions.id = prescription_drugs.prescription_id 
+            AND prescriptions.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can insert drugs for their prescriptions" ON prescription_drugs
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM prescriptions 
+            WHERE prescriptions.id = prescription_drugs.prescription_id 
+            AND prescriptions.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update drugs for their prescriptions" ON prescription_drugs
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM prescriptions 
+            WHERE prescriptions.id = prescription_drugs.prescription_id 
+            AND prescriptions.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete drugs for their prescriptions" ON prescription_drugs
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM prescriptions 
+            WHERE prescriptions.id = prescription_drugs.prescription_id 
+            AND prescriptions.user_id = auth.uid()
+        )
+    );
+
+-- Drug reminder times (access through prescription drugs)
+ALTER TABLE drug_reminder_times ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view reminder times for their drugs" ON drug_reminder_times
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM prescription_drugs pd
+            JOIN prescriptions p ON p.id = pd.prescription_id
+            WHERE pd.id = drug_reminder_times.drug_id 
+            AND p.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can insert reminder times for their drugs" ON drug_reminder_times
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM prescription_drugs pd
+            JOIN prescriptions p ON p.id = pd.prescription_id
+            WHERE pd.id = drug_reminder_times.drug_id 
+            AND p.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update reminder times for their drugs" ON drug_reminder_times
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM prescription_drugs pd
+            JOIN prescriptions p ON p.id = pd.prescription_id
+            WHERE pd.id = drug_reminder_times.drug_id 
+            AND p.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete reminder times for their drugs" ON drug_reminder_times
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM prescription_drugs pd
+            JOIN prescriptions p ON p.id = pd.prescription_id
+            WHERE pd.id = drug_reminder_times.drug_id 
+            AND p.user_id = auth.uid()
+        )
+    );
+
+-- Insurance info
+ALTER TABLE insurance_info ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own insurance info" ON insurance_info
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own insurance info" ON insurance_info
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own insurance info" ON insurance_info
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own insurance info" ON insurance_info
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Chat sessions
+ALTER TABLE chat_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own chat sessions" ON chat_sessions
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own chat sessions" ON chat_sessions
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own chat sessions" ON chat_sessions
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own chat sessions" ON chat_sessions
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Chat messages (access through sessions)
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view messages in their chat sessions" ON chat_messages
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM chat_sessions 
+            WHERE chat_sessions.id = chat_messages.session_id 
+            AND chat_sessions.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can insert messages in their chat sessions" ON chat_messages
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM chat_sessions 
+            WHERE chat_sessions.id = chat_messages.session_id 
+            AND chat_sessions.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update messages in their chat sessions" ON chat_messages
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM chat_sessions 
+            WHERE chat_sessions.id = chat_messages.session_id 
+            AND chat_sessions.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete messages in their chat sessions" ON chat_messages
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM chat_sessions 
+            WHERE chat_sessions.id = chat_messages.session_id 
+            AND chat_sessions.user_id = auth.uid()
+        )
+    );
+
+-- Symptom analyses (access through messages)
+ALTER TABLE symptom_analyses ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view analyses for their messages" ON symptom_analyses
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM chat_messages cm
+            JOIN chat_sessions cs ON cs.id = cm.session_id
+            WHERE cm.id = symptom_analyses.message_id 
+            AND cs.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can insert analyses for their messages" ON symptom_analyses
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM chat_messages cm
+            JOIN chat_sessions cs ON cs.id = cm.session_id
+            WHERE cm.id = symptom_analyses.message_id 
+            AND cs.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update analyses for their messages" ON symptom_analyses
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM chat_messages cm
+            JOIN chat_sessions cs ON cs.id = cm.session_id
+            WHERE cm.id = symptom_analyses.message_id 
+            AND cs.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete analyses for their messages" ON symptom_analyses
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM chat_messages cm
+            JOIN chat_sessions cs ON cs.id = cm.session_id
+            WHERE cm.id = symptom_analyses.message_id 
+            AND cs.user_id = auth.uid()
+        )
+    );
+
+-- Diet plans
+ALTER TABLE diet_plans ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own diet plans" ON diet_plans
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own diet plans" ON diet_plans
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own diet plans" ON diet_plans
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own diet plans" ON diet_plans
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Diet plan days (access through diet plans)
+ALTER TABLE diet_plan_days ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view days for their diet plans" ON diet_plan_days
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM diet_plans 
+            WHERE diet_plans.id = diet_plan_days.diet_plan_id 
+            AND diet_plans.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can insert days for their diet plans" ON diet_plan_days
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM diet_plans 
+            WHERE diet_plans.id = diet_plan_days.diet_plan_id 
+            AND diet_plans.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update days for their diet plans" ON diet_plan_days
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM diet_plans 
+            WHERE diet_plans.id = diet_plan_days.diet_plan_id 
+            AND diet_plans.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete days for their diet plans" ON diet_plan_days
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM diet_plans 
+            WHERE diet_plans.id = diet_plan_days.diet_plan_id 
+            AND diet_plans.user_id = auth.uid()
+        )
+    );
+
+-- Diet plan meals (access through diet plan days)
+ALTER TABLE diet_plan_meals ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view meals for their diet plan days" ON diet_plan_meals
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM diet_plan_days dpd
+            JOIN diet_plans dp ON dp.id = dpd.diet_plan_id
+            WHERE dpd.id = diet_plan_meals.diet_plan_day_id 
+            AND dp.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can insert meals for their diet plan days" ON diet_plan_meals
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM diet_plan_days dpd
+            JOIN diet_plans dp ON dp.id = dpd.diet_plan_id
+            WHERE dpd.id = diet_plan_meals.diet_plan_day_id 
+            AND dp.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update meals for their diet plan days" ON diet_plan_meals
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM diet_plan_days dpd
+            JOIN diet_plans dp ON dp.id = dpd.diet_plan_id
+            WHERE dpd.id = diet_plan_meals.diet_plan_day_id 
+            AND dp.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete meals for their diet plan days" ON diet_plan_meals
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM diet_plan_days dpd
+            JOIN diet_plans dp ON dp.id = dpd.diet_plan_id
+            WHERE dpd.id = diet_plan_meals.diet_plan_day_id 
+            AND dp.user_id = auth.uid()
+        )
+    );
+
+-- Exercise plans
+ALTER TABLE exercise_plans ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own exercise plans" ON exercise_plans
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own exercise plans" ON exercise_plans
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own exercise plans" ON exercise_plans
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own exercise plans" ON exercise_plans
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Exercise plan days (access through exercise plans)
+ALTER TABLE exercise_plan_days ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view days for their exercise plans" ON exercise_plan_days
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM exercise_plans 
+            WHERE exercise_plans.id = exercise_plan_days.exercise_plan_id 
+            AND exercise_plans.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can insert days for their exercise plans" ON exercise_plan_days
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM exercise_plans 
+            WHERE exercise_plans.id = exercise_plan_days.exercise_plan_id 
+            AND exercise_plans.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update days for their exercise plans" ON exercise_plan_days
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM exercise_plans 
+            WHERE exercise_plans.id = exercise_plan_days.exercise_plan_id 
+            AND exercise_plans.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete days for their exercise plans" ON exercise_plan_days
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM exercise_plans 
+            WHERE exercise_plans.id = exercise_plan_days.exercise_plan_id 
+            AND exercise_plans.user_id = auth.uid()
+        )
+    );
+
+-- Exercise plan exercises (access through exercise plan days)
+ALTER TABLE exercise_plan_exercises ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view exercises for their exercise plan days" ON exercise_plan_exercises
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM exercise_plan_days epd
+            JOIN exercise_plans ep ON ep.id = epd.exercise_plan_id
+            WHERE epd.id = exercise_plan_exercises.exercise_plan_day_id 
+            AND ep.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can insert exercises for their exercise plan days" ON exercise_plan_exercises
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM exercise_plan_days epd
+            JOIN exercise_plans ep ON ep.id = epd.exercise_plan_id
+            WHERE epd.id = exercise_plan_exercises.exercise_plan_day_id 
+            AND ep.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update exercises for their exercise plan days" ON exercise_plan_exercises
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM exercise_plan_days epd
+            JOIN exercise_plans ep ON ep.id = epd.exercise_plan_id
+            WHERE epd.id = exercise_plan_exercises.exercise_plan_day_id 
+            AND ep.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete exercises for their exercise plan days" ON exercise_plan_exercises
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM exercise_plan_days epd
+            JOIN exercise_plans ep ON ep.id = epd.exercise_plan_id
+            WHERE epd.id = exercise_plan_exercises.exercise_plan_day_id 
+            AND ep.user_id = auth.uid()
+        )
+    );
+
+-- Health advice
+ALTER TABLE health_advice ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own health advice" ON health_advice
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own health advice" ON health_advice
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own health advice" ON health_advice
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own health advice" ON health_advice
+    FOR DELETE USING (auth.uid() = user_id);

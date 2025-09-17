@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useLanguage } from "../hooks/useLanguage";
-import { useUser } from "../contexts/UserContext";
+import { useAuth } from "../src/contexts/AuthContext";
 import Icon from "./Icon";
 
 interface LoginSignupProps {
@@ -9,7 +9,7 @@ interface LoginSignupProps {
 
 const LoginSignup: React.FC<LoginSignupProps> = ({ onBack }) => {
 	const { t } = useLanguage();
-	const { login } = useUser();
+	const { signIn, signUp, signInWithGoogle, loading } = useAuth();
 	const [isLoginMode, setIsLoginMode] = useState(true);
 	const [formData, setFormData] = useState({
 		email: "",
@@ -102,33 +102,75 @@ const LoginSignup: React.FC<LoginSignupProps> = ({ onBack }) => {
 
 		setIsLoading(true);
 
-		// Simulate API call delay
-		setTimeout(() => {
-			setIsLoading(false);
-
+		try {
 			if (isLoginMode) {
-				// For login, use mock authentication (in real app, this would verify credentials)
-				login();
+				// Login with email and password
+				const { error } = await signIn(
+					formData.email.trim(),
+					formData.password
+				);
+				if (error) {
+					setErrors({ general: error.message });
+					setIsLoading(false);
+					return;
+				}
+				// Success - the App component will handle navigation
 			} else {
-				// For signup, pass the actual user data
-				login({
-					name: formData.name.trim(),
-					email: formData.email.trim().toLowerCase(),
-				});
+				// Sign up with email, password, and metadata
+				const { data, error } = await signUp(
+					formData.email.trim(),
+					formData.password,
+					{
+						name: formData.name.trim(),
+						full_name: formData.name.trim(),
+					}
+				);
+				if (error) {
+					setErrors({ general: error.message });
+					setIsLoading(false);
+					return;
+				}
+				// Success - check if user needs to confirm email
+				if (data.user && !data.session) {
+					setErrors({
+						general:
+							"Please check your email and click the confirmation link to complete registration.",
+					});
+					setIsLoading(false);
+					return;
+				}
+				// If session exists, user is automatically logged in
 			}
 
-			onBack(); // Return to settings after successful login/signup
-		}, 1500); // Slightly longer delay to show loading state
+			setIsLoading(false);
+			// Don't call onBack() here - let the App component handle navigation automatically
+		} catch (error) {
+			console.error("Auth error:", error);
+			setErrors({ general: "An unexpected error occurred" });
+			setIsLoading(false);
+		}
 	};
 
-	const handleGoogleLogin = () => {
+	const handleGoogleLogin = async () => {
 		setIsLoading(true);
-		// Simulate Google OAuth delay
-		setTimeout(() => {
+		setErrors({}); // Clear any existing errors
+
+		try {
+			const { error } = await signInWithGoogle();
+
+			if (error) {
+				setErrors({ general: error.message });
+				setIsLoading(false);
+				return;
+			}
+
+			// Success - the OAuth will redirect to the app
+			// The App component will handle navigation automatically
+		} catch (error) {
+			console.error("Google auth error:", error);
+			setErrors({ general: "Google sign-in failed. Please try again." });
 			setIsLoading(false);
-			login();
-			onBack();
-		}, 1000);
+		}
 	};
 
 	return (
@@ -240,6 +282,20 @@ const LoginSignup: React.FC<LoginSignupProps> = ({ onBack }) => {
 
 					{/* Form */}
 					<form onSubmit={handleSubmit} className="space-y-4">
+						{/* General error display */}
+						{errors.general && (
+							<div className="p-3 bg-red-50 dark:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-700/50">
+								<div className="flex items-start gap-2">
+									<Icon
+										name="exclamation-triangle"
+										className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5"
+									/>
+									<p className="text-sm text-red-800 dark:text-red-300">
+										{errors.general}
+									</p>
+								</div>
+							</div>
+						)}
 						{!isLoginMode && (
 							<div>
 								<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -444,24 +500,6 @@ const LoginSignup: React.FC<LoginSignupProps> = ({ onBack }) => {
 								{isLoginMode ? t("signUp") : t("signIn")}
 							</button>
 						</p>
-					</div>
-
-					{/* Demo notice */}
-					<div className="mt-6 p-3 bg-teal-50 dark:bg-teal-900/30 rounded-lg border border-teal-200 dark:border-teal-700/50">
-						<div className="flex items-start gap-2">
-							<Icon
-								name="info"
-								className="h-5 w-5 text-teal-600 dark:text-teal-400 flex-shrink-0 mt-0.5"
-							/>
-							<div>
-								<p className="text-sm font-medium text-teal-800 dark:text-teal-300">
-									{t("demoModeTitle")}
-								</p>
-								<p className="text-xs text-teal-700 dark:text-teal-400 mt-1">
-									{t("demoModeDescription")}
-								</p>
-							</div>
-						</div>
 					</div>
 				</div>
 			</div>

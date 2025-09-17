@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLanguage } from "../hooks/useLanguage";
-import { useUser } from "../contexts/UserContext";
+import { useAuth } from "../src/contexts/AuthContext";
 import Icon from "./Icon";
 
 const fileToBase64 = (file: File): Promise<string> => {
@@ -80,7 +80,7 @@ const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 }) => {
 	const { theme, toggleTheme } = useTheme();
 	const { language, toggleLanguage, t } = useLanguage();
-	const { user, isLoggedIn, logout } = useUser();
+	const { user, session, signOut } = useAuth();
 	const [teamImage, setTeamImage] = useState<string | null>(null);
 	const teamImageInputRef = useRef<HTMLInputElement>(null);
 
@@ -138,9 +138,12 @@ const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 		URL.revokeObjectURL(url);
 	};
 
-	const handleLogout = () => {
+	const handleLogout = async () => {
 		if (window.confirm(t("confirmLogout"))) {
-			logout();
+			const { error } = await signOut();
+			if (error) {
+				console.error("Error signing out:", error);
+			}
 		}
 	};
 
@@ -176,23 +179,25 @@ const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 				<h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
 					{t("account")}
 				</h3>
-				{isLoggedIn && user ? (
+				{user && session ? (
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-4">
-							{user.avatar === "ICON_PLACEHOLDER" ? (
+							{user.user_metadata?.avatar_url ? (
+								<img
+									src={user.user_metadata.avatar_url}
+									alt={user.user_metadata?.full_name || user.email}
+									className="h-12 w-12 rounded-full"
+								/>
+							) : (
 								<div className="h-12 w-12 rounded-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center text-gray-500 dark:text-gray-400">
 									<Icon name="user" className="h-7 w-7" />
 								</div>
-							) : (
-								<img
-									src={user.avatar}
-									alt={user.name}
-									className="h-12 w-12 rounded-full"
-								/>
 							)}
 							<div>
 								<p className="font-semibold text-gray-900 dark:text-gray-100">
-									{user.name}
+									{user.user_metadata?.full_name ||
+										user.user_metadata?.name ||
+										user.email?.split("@")[0]}
 								</p>
 								<p className="text-sm text-gray-600 dark:text-gray-400">
 									{user.email}
