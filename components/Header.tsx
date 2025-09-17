@@ -111,10 +111,7 @@ const Header = React.forwardRef<HTMLHeadElement, HeaderProps>(
 									aria-label={user ? t("settings") : t("login")}
 									title={user ? user.email || t("settings") : t("login")}
 								>
-									<Icon
-										name={user ? "user" : "login"}
-										className="h-5 w-5"
-									/>
+									<Icon name={user ? "user" : "login"} className="h-5 w-5" />
 								</button>
 								<button
 									onClick={() => setActiveView("settings")}
