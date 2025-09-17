@@ -142,8 +142,10 @@ const Chatbot: React.FC = () => {
 					}
 
 					// Save message to database
+					// Ensure sender is only 'user' or 'ai' for DB
+					const dbSender = newMessage.sender === "user" ? "user" : "ai";
 					const dbMessage = await chatService.addMessage(sessionId, {
-						sender: newMessage.sender,
+						sender: dbSender,
 						message_text: newMessage.text,
 					});
 
@@ -290,10 +292,10 @@ const Chatbot: React.FC = () => {
 				};
 				setMessages((prev) => [...prev, aiMessage]);
 
-				// Save AI message to database/localStorage (use 'assistant' for database)
+				// Save AI message to database/localStorage (use 'ai' for database)
 				await saveMessage({
 					...aiMessage,
-					sender: "assistant" as any,
+					sender: "ai",
 				});
 			} catch (err) {
 				const message = err instanceof Error ? err.message : t("unknownError");
