@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase } from "../src/lib/supabase";
 import { ChatMessage } from "../types";
 
 export interface ChatSession {
