@@ -219,7 +219,7 @@ export const insuranceService = {
 	) {
 		const { data, error } = await supabase
 			.from("insurance_info")
-			.upsert([insurance])
+			.upsert(insurance as Tables["insurance_info"]["Insert"])
 			.select();
 
 		if (error) throw error;
