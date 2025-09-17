@@ -56,6 +56,7 @@ const App: React.FC = () => {
 	const headerRef = useRef<HTMLHeadElement>(null);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [headerHeight, setHeaderHeight] = useState(80); // Default header height as fallback
+	const [isTransitioning, setIsTransitioning] = useState(false);
 	const { isScrolled, scrollDirection } = useScroll(scrollRef);
 
 	useLayoutEffect(() => {
@@ -84,25 +85,43 @@ const App: React.FC = () => {
 	// Recalculate header height when view changes (especially when returning from login)
 	useLayoutEffect(() => {
 		if (activeView !== "login" && headerRef.current) {
-			// Small delay to ensure DOM is fully rendered
-			const timeoutId = setTimeout(() => {
-				const height = headerRef.current?.getBoundingClientRect().height || 80;
-				setHeaderHeight(height);
+			setIsTransitioning(true);
 
-				// Ensure scroll container is properly positioned
-				if (scrollRef.current) {
-					scrollRef.current.style.paddingTop = `${height}px`;
+			// Use requestAnimationFrame to ensure DOM is fully rendered
+			const frameId = requestAnimationFrame(() => {
+				if (headerRef.current) {
+					const height = headerRef.current.getBoundingClientRect().height;
+					setHeaderHeight(height);
+					setIsTransitioning(false);
 				}
-			}, 0);
+			});
 
-			return () => clearTimeout(timeoutId);
+			return () => {
+				cancelAnimationFrame(frameId);
+				setIsTransitioning(false);
+			};
 		} else if (activeView === "login") {
-			// When going to login, reset padding
-			if (scrollRef.current) {
-				scrollRef.current.style.paddingTop = "0px";
-			}
+			setIsTransitioning(false);
 		}
 	}, [activeView]);
+
+	// Force recalculation when header visibility changes
+	useLayoutEffect(() => {
+		if (activeView !== "login" && headerRef.current && !isTransitioning) {
+			// Double-check header height after a brief delay for DOM settling
+			const timeoutId = setTimeout(() => {
+				if (headerRef.current) {
+					const rect = headerRef.current.getBoundingClientRect();
+					const newHeight = rect.height;
+					if (newHeight > 0 && Math.abs(newHeight - headerHeight) > 1) {
+						setHeaderHeight(newHeight);
+					}
+				}
+			}, 150);
+
+			return () => clearTimeout(timeoutId);
+		}
+	}, [activeView, headerHeight, isTransitioning]);
 
 	const renderView = useCallback(() => {
 		switch (activeView) {
