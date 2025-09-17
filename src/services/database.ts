@@ -3,6 +3,90 @@ import { Database } from "../types/database";
 
 type Tables = Database["public"]["Tables"];
 
+// User Profile Service
+export const userService = {
+	async getProfile(userId: string) {
+		console.log("🔧 [userService.getProfile] Checking for user:", userId);
+
+		try {
+			const { data, error } = await supabase
+				.from("users")
+				.select("*")
+				.eq("id", userId)
+				.single();
+
+			if (error && error.code !== "PGRST116") {
+				console.error("🔧 [userService.getProfile] Supabase error:", {
+					message: error.message,
+					code: error.code,
+					details: error.details,
+				});
+				throw error;
+			}
+
+			console.log(
+				"🔧 [userService.getProfile] Result:",
+				data ? "Found" : "Not found"
+			);
+			return data;
+		} catch (err) {
+			console.error("🔧 [userService.getProfile] Exception:", err);
+			throw err;
+		}
+	},
+
+	async createProfile(profile: Tables["users"]["Insert"]) {
+		console.log("🔧 [userService.createProfile] Starting with data:", profile);
+
+		try {
+			const { data, error } = await supabase
+				.from("users")
+				.insert([profile])
+				.select()
+				.single();
+
+			if (error) {
+				console.error("🔧 [userService.createProfile] Supabase error:", {
+					message: error.message,
+					code: error.code,
+					details: error.details,
+					hint: error.hint,
+				});
+				throw error;
+			}
+
+			console.log("🔧 [userService.createProfile] Success:", data);
+			return data;
+		} catch (err) {
+			console.error("🔧 [userService.createProfile] Exception:", err);
+			throw err;
+		}
+	},
+
+	async updateProfile(userId: string, updates: Tables["users"]["Update"]) {
+		const { data, error } = await supabase
+			.from("users")
+			.update(updates)
+			.eq("id", userId)
+			.select()
+			.single();
+
+		if (error) throw error;
+		return data;
+	},
+
+	async upsertProfile(profile: Tables["users"]["Insert"]) {
+		const { data, error } = await supabase
+			.from("users")
+			.upsert([profile])
+			.select()
+			.single();
+
+		if (error) throw error;
+		return data;
+	},
+};
+
 // Health Entries Service
 export const healthService = {
 	async getEntries(userId: string) {
@@ -80,7 +164,7 @@ export const chatService = {
 
 	async addMessage(
 		sessionId: string,
-		message: Tables["chat_messages"]["Insert"]
+		message: Omit<Tables["chat_messages"]["Insert"], "session_id">
 	) {
 		const { data, error } = await supabase
 			.from("chat_messages")
@@ -93,7 +177,7 @@ export const chatService = {
 
 	async addSymptomAnalysis(
 		messageId: string,
-		analysis: Tables["symptom_analyses"]["Insert"]
+		analysis: Omit<Tables["symptom_analyses"]["Insert"], "message_id">
 	) {
 		const { data, error } = await supabase
 			.from("symptom_analyses")
