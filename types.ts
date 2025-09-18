@@ -29,6 +29,7 @@ export interface ChatMessage {
 }
 
 export interface HealthEntry {
+	id?: string; // Optional for database entries
 	date: string;
 	age: number;
 	height: number;
