@@ -4,6 +4,8 @@ import { MedicalRecord, Prescription, Insurance, Drug } from '../types';
 import { useLanguage } from '../hooks/useLanguage';
 import Icon from './Icon';
 import { useReminders } from '../contexts/ReminderContext';
+import { useAuth } from '../src/contexts/AuthContext';
+import { medicalRecordsService, prescriptionsService, insuranceService } from '../src/services/database';
 
 const fileToBase64 = (file: File): Promise<{ data: string; type: string; name: string; }> => {
   return new Promise((resolve, reject) => {
@@ -65,6 +67,7 @@ const Accordion: React.FC<{ title: string; icon: string; children: ReactNode; ac
 
 const HealthWallet: React.FC = () => {
     const { t, language } = useLanguage();
+    const { user } = useAuth();
     const { permissionStatus, requestPermission, scheduleReminders } = useReminders();
     const [records, setRecords] = useState<MedicalRecord[]>([]);
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
@@ -72,12 +75,80 @@ const HealthWallet: React.FC = () => {
     const [modalState, setModalState] = useState<ModalState>({ isOpen: false, type: null });
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Loading states
+    const [isLoadingData, setIsLoadingData] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [dbError, setDbError] = useState<string | null>(null);
+
     // Form State
     const [formValues, setFormValues] = useState<any>({ drugs: [{ id: Date.now().toString(), name: '', dosage: '', reminderEnabled: false, reminderTimes: [] }] });
     const [formFile, setFormFile] = useState<{ data: string; type: string; name: string; } | null>(null);
     const [formErrors, setFormErrors] = useState<{ [key: string]: string | { [key: string]: string } }>({});
 
-    useEffect(() => {
+    // Load data from database or localStorage fallback
+    const loadHealthWalletData = useCallback(async () => {
+        if (user) {
+            // Load from database for authenticated users
+            setIsLoadingData(true);
+            setDbError(null);
+            try {
+                // Load medical records
+                const dbRecords = await medicalRecordsService.getRecords(user.id);
+                const formattedRecords: MedicalRecord[] = dbRecords.map((record) => ({
+                    id: record.id,
+                    name: record.name,
+                    date: record.issue_date,
+                    fileData: record.file_data,
+                    fileType: record.file_type,
+                }));
+                setRecords(formattedRecords);
+
+                // Load prescriptions with drugs
+                const dbPrescriptions = await prescriptionsService.getPrescriptions(user.id);
+                const formattedPrescriptions: Prescription[] = dbPrescriptions.map((prescription) => ({
+                    id: prescription.id,
+                    doctor: prescription.doctor_name,
+                    date: prescription.issue_date,
+                    drugs: prescription.prescription_drugs?.map((drug) => ({
+                        id: drug.id,
+                        name: drug.drug_name,
+                        dosage: drug.dosage,
+                        reminderEnabled: (drug.drug_reminder_times?.length || 0) > 0,
+                        reminderTimes: drug.drug_reminder_times?.map(rt => rt.reminder_time) || []
+                    })) || [],
+                    fileData: prescription.file_data || undefined,
+                    fileType: prescription.file_type || undefined,
+                }));
+                setPrescriptions(formattedPrescriptions);
+
+                // Load insurance
+                const dbInsurance = await insuranceService.getInsurance(user.id);
+                if (dbInsurance) {
+                    const formattedInsurance: Insurance = {
+                        id: dbInsurance.id,
+                        provider: dbInsurance.provider_name,
+                        policyNumber: dbInsurance.policy_number,
+                        contact: dbInsurance.contact_info || '',
+                        fileData: dbInsurance.file_data || undefined,
+                        fileType: dbInsurance.file_type || undefined,
+                    };
+                    setInsurance(formattedInsurance);
+                }
+            } catch (error) {
+                console.error("Failed to load health wallet data from database:", error);
+                setDbError("Failed to load health wallet data from database. Using local storage.");
+                // Fallback to localStorage
+                loadFromLocalStorage();
+            } finally {
+                setIsLoadingData(false);
+            }
+        } else {
+            // Load from localStorage for non-authenticated users
+            loadFromLocalStorage();
+        }
+    }, [user]);
+
+    const loadFromLocalStorage = () => {
         try {
             const storedRecords = localStorage.getItem('medicalRecords');
             if (storedRecords) setRecords(JSON.parse(storedRecords));
@@ -87,8 +158,14 @@ const HealthWallet: React.FC = () => {
 
             const storedInsurance = localStorage.getItem('insurance');
             if (storedInsurance) setInsurance(JSON.parse(storedInsurance));
-        } catch (error) { console.error("Failed to load from localStorage", error); }
-    }, []);
+        } catch (error) { 
+            console.error("Failed to load from localStorage", error); 
+        }
+    };
+
+    useEffect(() => {
+        loadHealthWalletData();
+    }, [loadHealthWalletData]);
 
     const handleCloseModal = useCallback(() => {
         setModalState({ isOpen: false, type: null });
@@ -123,12 +200,19 @@ const HealthWallet: React.FC = () => {
     }, [modalState.isOpen]);
 
 
-    const saveData = useCallback((key: string, data: any) => {
+    const saveData = useCallback(async (key: string, data: any) => {
+        if (user) {
+            // Save to database for authenticated users
+            // Note: This is kept for localStorage fallback calls
+            // Individual database saves are handled in handleSave
+        }
+        
+        // Always save to localStorage as backup/fallback
         localStorage.setItem(key, JSON.stringify(data));
         if (key === 'prescriptions') {
             scheduleReminders();
         }
-    }, [scheduleReminders]);
+    }, [user, scheduleReminders]);
 
     const resetForm = () => {
         setFormValues({ drugs: [{ id: Date.now().toString(), name: '', dosage: '', reminderEnabled: false, reminderTimes: [] }] });
@@ -183,8 +267,10 @@ const HealthWallet: React.FC = () => {
         return Object.keys(errors).length === 0;
     };
     
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!validateForm()) return;
+        
+        setIsSaving(true);
         
         try {
             const id = Date.now().toString();
@@ -198,29 +284,63 @@ const HealthWallet: React.FC = () => {
                         fileData: formFile!.data,
                         fileType: formFile!.type,
                     };
+
+                    if (user) {
+                        // Save to database
+                        await medicalRecordsService.addRecord({
+                            user_id: user.id,
+                            name: formValues.name,
+                            issue_date: formValues.date,
+                            file_data: formFile!.data,
+                            file_type: formFile!.type,
+                        });
+                    }
+
                     const updatedRecords = [...records, newRecord];
                     setRecords(updatedRecords);
                     saveData('medicalRecords', updatedRecords);
                     break;
                 }
                 case 'prescription': {
-                     const newPrescription: Prescription = {
+                    const validDrugs = formValues.drugs
+                        .filter((d: Drug) => d.name && d.dosage)
+                        .map((d: Drug) => ({...d, reminderTimes: d.reminderEnabled ? d.reminderTimes : []}));
+                    
+                    const newPrescription: Prescription = {
                         id,
                         doctor: formValues.doctor,
                         date: formValues.date,
-                        drugs: formValues.drugs
-                            .filter((d: Drug) => d.name && d.dosage)
-                            .map((d: Drug) => ({...d, reminderTimes: d.reminderEnabled ? d.reminderTimes : []})),
+                        drugs: validDrugs,
                         fileData: formFile?.data,
                         fileType: formFile?.type,
                     };
+
+                    if (user) {
+                        // Save to database
+                        const prescriptionData = {
+                            user_id: user.id,
+                            doctor_name: formValues.doctor,
+                            issue_date: formValues.date,
+                            file_data: formFile?.data || null,
+                            file_type: formFile?.type || null,
+                        };
+
+                        const drugsData = validDrugs.map((drug) => ({
+                            drug_name: drug.name,
+                            dosage: drug.dosage,
+                            instructions: '', // Default empty instructions
+                        }));
+
+                        await prescriptionsService.addPrescription(prescriptionData, drugsData);
+                    }
+
                     const updatedPrescriptions = [...prescriptions, newPrescription];
                     setPrescriptions(updatedPrescriptions);
                     saveData('prescriptions', updatedPrescriptions);
                     break;
                 }
                 case 'insurance': {
-                     const newInsurance: Insurance = {
+                    const newInsurance: Insurance = {
                         id: modalState.data?.id || id,
                         provider: formValues.provider,
                         policyNumber: formValues.policyNumber,
@@ -228,31 +348,64 @@ const HealthWallet: React.FC = () => {
                         fileData: formFile?.data,
                         fileType: formFile?.type,
                     };
+
+                    if (user) {
+                        // Save to database
+                        await insuranceService.upsertInsurance({
+                            user_id: user.id,
+                            provider_name: formValues.provider,
+                            policy_number: formValues.policyNumber,
+                            contact_info: formValues.contact || null,
+                            file_data: formFile?.data || null,
+                            file_type: formFile?.type || null,
+                        });
+                    }
+
                     setInsurance(newInsurance);
                     saveData('insurance', newInsurance);
                     break;
                 }
             }
         } catch (error) {
-            console.error("Failed to save data to localStorage:", error);
+            console.error("Failed to save data:", error);
+            setDbError("Failed to save data to database. Data saved locally.");
         } finally {
+            setIsSaving(false);
             handleCloseModal();
         }
     };
 
-    const handleDelete = (id: string, type: 'record' | 'prescription' | 'insurance') => {
+    const handleDelete = async (id: string, type: 'record' | 'prescription' | 'insurance') => {
         if (!window.confirm(t('deleteConfirmation'))) return;
-        if (type === 'record') {
-            const updated = records.filter(r => r.id !== id);
-            setRecords(updated);
-            saveData('medicalRecords', updated);
-        } else if (type === 'prescription') {
-            const updated = prescriptions.filter(p => p.id !== id);
-            setPrescriptions(updated);
-            saveData('prescriptions', updated);
-        } else if (type === 'insurance') {
-            setInsurance(null);
-            localStorage.removeItem('insurance');
+        
+        try {
+            if (type === 'record') {
+                if (user) {
+                    // Delete from database
+                    await medicalRecordsService.deleteRecord(id);
+                }
+                const updated = records.filter(r => r.id !== id);
+                setRecords(updated);
+                saveData('medicalRecords', updated);
+            } else if (type === 'prescription') {
+                if (user) {
+                    // Delete from database
+                    await prescriptionsService.deletePrescription(id);
+                }
+                const updated = prescriptions.filter(p => p.id !== id);
+                setPrescriptions(updated);
+                saveData('prescriptions', updated);
+            } else if (type === 'insurance') {
+                if (user) {
+                    // Delete from database
+                    await insuranceService.deleteInsurance(user.id);
+                }
+                setInsurance(null);
+                localStorage.removeItem('insurance');
+            }
+        } catch (error) {
+            console.error("Failed to delete from database:", error);
+            setDbError("Failed to delete from database. Item removed locally.");
         }
     };
     
@@ -486,7 +639,31 @@ const HealthWallet: React.FC = () => {
                 <p className="mt-2 max-w-2xl mx-auto text-sm text-gray-600 dark:text-gray-400">{t('walletDescription')}</p>
             </div>
 
-            <style>{`
+            {/* Loading State */}
+            {isLoadingData && (
+                <div className="flex items-center justify-center py-8">
+                    <div className="flex items-center space-x-2">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600"></div>
+                        <span className="text-gray-600 dark:text-gray-400">{t('loadingHealthWallet', 'Loading health wallet...')}</span>
+                    </div>
+                </div>
+            )}
+
+            {/* Database Error */}
+            {dbError && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-4">
+                    <div className="flex">
+                        <Icon name="alert-triangle" className="h-5 w-5 text-yellow-400" />
+                        <div className="ml-3">
+                            <p className="text-sm text-yellow-700 dark:text-yellow-300">{dbError}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {!isLoadingData && (
+                <>
+                    <style>{`
                 .input-style {
                     display: block;
                     width: 100%;
@@ -611,11 +788,20 @@ const HealthWallet: React.FC = () => {
                         </div>
                         <div className="p-4 border-t dark:border-zinc-800 flex justify-end gap-3 flex-shrink-0">
                             <button onClick={handleCloseModal} className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 transition">{t('cancel')}</button>
-                            <button onClick={handleSave} className="px-4 py-2 text-sm font-semibold rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition">{t('save')}</button>
+                            <button 
+                                onClick={handleSave} 
+                                disabled={isSaving}
+                                className="px-4 py-2 text-sm font-semibold rounded-lg bg-teal-500 text-white hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center"
+                            >
+                                {isSaving && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>}
+                                {isSaving ? t('saving', 'Saving...') : t('save')}
+                            </button>
                         </div>
                     </div>
                 </div>,
                 document.body
+            )}
+                </>
             )}
         </div>
     );
