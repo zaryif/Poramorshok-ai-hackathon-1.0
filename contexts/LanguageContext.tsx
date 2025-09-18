@@ -6,6 +6,7 @@ import React, {
 	useMemo,
 	useCallback,
 } from "react";
+import { userService } from "../src/services/database";
 
 type Language = "en" | "bn";
 
@@ -13,6 +14,8 @@ interface LanguageContextType {
 	language: Language;
 	toggleLanguage: () => void;
 	t: (key: string, options?: { [key: string]: string | number }) => string;
+	updateLanguagePreference: (userId: string, lang: Language) => Promise<void>;
+	loadUserLanguagePreference: (userId: string) => Promise<void>;
 }
 
 // Basic translations to make the app functional.
@@ -50,6 +53,7 @@ const translations: { [lang in Language]: { [key: string]: string } } = {
 		disclaimerText:
 			"The information provided by পরামর্শক AI is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always seek the advice of your physician or other qualified health provider with any questions you may have regarding a medical condition.",
 		thinking: "Thinking...",
+		loadingChatHistory: "Loading chat history...",
 		funFactError: "Could not fetch a fun fact at the moment.",
 		funHealthFact: "Fun Health Fact!",
 		yourProfile: "Your Profile",
@@ -254,6 +258,8 @@ const translations: { [lang in Language]: { [key: string]: string } } = {
 		oneUppercase: "One uppercase letter",
 		oneLowercase: "One lowercase letter",
 		oneNumber: "One number",
+		unexpectedError: "An unexpected error occurred",
+		notLoggedIn: "You are not logged in.",
 	},
 	bn: {
 		// Bengali translations
@@ -290,6 +296,7 @@ const translations: { [lang in Language]: { [key: string]: string } } = {
 		disclaimerText:
 			"পরামর্শক AI দ্বারা প্রদত্ত তথ্য শুধুমাত্র তথ্যগত উদ্দেশ্যে এবং পেশাদার চিকিৎসা পরামর্শ, রোগ নির্ণয় বা চিকিৎসার বিকল্প নয়। যেকোনো চিকিৎসা সংক্রান্ত প্রশ্ন থাকলে সর্বদা আপনার চিকিৎসক বা অন্য যোগ্য স্বাস্থ্য প্রদানকারীর পরামর্শ নিন।",
 		thinking: "ভাবছে...",
+		loadingChatHistory: "চ্যাট ইতিহাস লোড হচ্ছে...",
 		funFactError: "এই মুহূর্তে একটি মজার তথ্য আনা সম্ভব হচ্ছে না।",
 		funHealthFact: "মজার স্বাস্থ্য তথ্য!",
 		yourProfile: "আপনার প্রোফাইল",
@@ -497,6 +504,8 @@ const translations: { [lang in Language]: { [key: string]: string } } = {
 		oneUppercase: "একটি বড় হাতের অক্ষর",
 		oneLowercase: "একটি ছোট হাতের অক্ষর",
 		oneNumber: "একটি সংখ্যা",
+		unexpectedError: "একটি অপ্রত্যাশিত ত্রুটি ঘটেছে",
+		notLoggedIn: "আপনি লগ ইন করেননি।",
 	},
 };
 
@@ -519,8 +528,40 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({
 		localStorage.setItem("language", language);
 	}, [language]);
 
-	const toggleLanguage = useCallback(() => {
-		setLanguage((prevLang) => (prevLang === "en" ? "bn" : "en"));
+	const toggleLanguage = useCallback(async () => {
+		const newLang = language === "en" ? "bn" : "en";
+		setLanguage(newLang);
+		// Note: Language preference will be updated via updateLanguagePreference
+		// when Settings component detects the change
+	}, [language]);
+
+	const updateLanguagePreference = useCallback(
+		async (userId: string, lang: Language) => {
+			try {
+				await userService.updateProfile(userId, { language_preference: lang });
+				console.log("Language preference updated in database:", lang);
+			} catch (error) {
+				console.error(
+					"Failed to update language preference in database:",
+					error
+				);
+			}
+		},
+		[]
+	);
+
+	const loadUserLanguagePreference = useCallback(async (userId: string) => {
+		try {
+			const profile = await userService.getProfile(userId);
+			if (
+				profile?.language_preference &&
+				["en", "bn"].includes(profile.language_preference)
+			) {
+				setLanguage(profile.language_preference as Language);
+			}
+		} catch (error) {
+			console.error("Failed to load user language preference:", error);
+		}
 	}, []);
 
 	const t = useCallback(
@@ -540,9 +581,22 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({
 		[language]
 	);
 
+	// Expose loadUserLanguagePreference for AuthContext integration
 	const value = useMemo(
-		() => ({ language, toggleLanguage, t }),
-		[language, toggleLanguage, t]
+		() => ({
+			language,
+			toggleLanguage,
+			t,
+			updateLanguagePreference,
+			loadUserLanguagePreference,
+		}),
+		[
+			language,
+			toggleLanguage,
+			t,
+			updateLanguagePreference,
+			loadUserLanguagePreference,
+		]
 	);
 
 	return (

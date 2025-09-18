@@ -146,7 +146,7 @@ const LoginSignup: React.FC<LoginSignupProps> = ({ onBack }) => {
 			// Don't call onBack() here - let the App component handle navigation automatically
 		} catch (error) {
 			console.error("Auth error:", error);
-			setErrors({ general: "An unexpected error occurred" });
+			setErrors({ general: t("unexpectedError") });
 			setIsLoading(false);
 		}
 	};

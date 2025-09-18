@@ -79,7 +79,8 @@ const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 	onNavigateToLogin,
 }) => {
 	const { theme, toggleTheme } = useTheme();
-	const { language, toggleLanguage, t } = useLanguage();
+	const { language, toggleLanguage, t, updateLanguagePreference } =
+		useLanguage();
 	const { user, session, signOut } = useAuth();
 	const [teamImage, setTeamImage] = useState<string | null>(null);
 	const teamImageInputRef = useRef<HTMLInputElement>(null);
@@ -90,6 +91,15 @@ const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 			setTeamImage(storedImage);
 		}
 	}, []);
+
+	const handleLanguageToggle = async () => {
+		await toggleLanguage();
+		// Update language preference in database if user is logged in
+		if (user?.id) {
+			const newLang = language === "en" ? "bn" : "en";
+			await updateLanguagePreference(user.id, newLang);
+		}
+	};
 
 	const handleClearAllData = () => {
 		if (window.confirm(t("confirmClearData"))) {
@@ -216,7 +226,7 @@ const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 				) : (
 					<div className="flex items-center justify-between">
 						<p className="text-gray-600 dark:text-gray-400">
-							You are not logged in.
+							{t("notLoggedIn")}
 						</p>
 						<button
 							onClick={onNavigateToLogin}
@@ -324,7 +334,7 @@ const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 							{t("language")}
 						</label>
 						<button
-							onClick={toggleLanguage}
+							onClick={handleLanguageToggle}
 							className="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors duration-200 bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300"
 						>
 							{language === "en" ? "বাংলা" : "English"}
