@@ -64,8 +64,17 @@ const translations: { [lang in Language]: { [key: string]: string } } = {
 		savedDietPlans: "Saved Diet Plans",
 		noSavedPlans: "No saved diet plans yet.",
 		exercisePlansNotSaved: "Exercise plans won't be saved",
+		loginToSaveExercisePlans:
+			"Log in to save your exercise plans and access them across devices.",
 		savedExercisePlans: "Saved Exercise Plans",
 		noSavedExercisePlans: "No saved exercise plans yet.",
+		healthAdviceNotSaved: "Health advice won't be saved",
+		loginToSaveHealthAdvice:
+			"Log in to save your health advice and access it across devices.",
+		actionsLabel: "Actions",
+		deleteEntry: "Delete entry",
+		confirmDeleteHealthEntry:
+			"Are you sure you want to delete this health entry?",
 		funFactError: "Could not fetch a fun fact at the moment.",
 		funHealthFact: "Fun Health Fact!",
 		yourProfile: "Your Profile",
@@ -317,9 +326,18 @@ const translations: { [lang in Language]: { [key: string]: string } } = {
 			"আপনার ডায়েট প্ল্যান সংরক্ষণ করতে এবং সব ডিভাইসে অ্যাক্সেস করতে লগ ইন করুন।",
 		savedDietPlans: "সংরক্ষিত ডায়েট প্ল্যান",
 		noSavedPlans: "এখনও কোনো ডায়েট প্ল্যান সংরক্ষিত নেই।",
-		exercisePlansNotSaved: "ব্যায়াম প্ল্যান সংরক্ষিত হবে না",
-		savedExercisePlans: "সংরক্ষিত ব্যায়াম প্ল্যান",
-		noSavedExercisePlans: "এখনও কোনো ব্যায়াম প্ল্যান সংরক্ষিত নেই।",
+		exercisePlansNotSaved: "ব্যায়াম পরিকল্পনা সংরক্ষিত হবে না",
+		loginToSaveExercisePlans:
+			"আপনার ব্যায়াম পরিকল্পনা সংরক্ষণ করতে এবং সব ডিভাইসে অ্যাক্সেস করতে লগ ইন করুন।",
+		savedExercisePlans: "সংরক্ষিত ব্যায়াম পরিকল্পনা",
+		noSavedExercisePlans: "এখনও কোনো ব্যায়াম পরিকল্পনা সংরক্ষিত নেই।",
+		healthAdviceNotSaved: "স্বাস্থ্য পরামর্শ সংরক্ষিত হবে না",
+		loginToSaveHealthAdvice:
+			"আপনার স্বাস্থ্য পরামর্শ সংরক্ষণ করতে এবং সব ডিভাইসে অ্যাক্সেস করতে লগ ইন করুন।",
+		actionsLabel: "কার্যক্রম",
+		deleteEntry: "এন্ট্রি মুছুন",
+		confirmDeleteHealthEntry:
+			"আপনি কি নিশ্চিত যে এই স্বাস্থ্য এন্ট্রি মুছে ফেলতে চান?",
 		funFactError: "এই মুহূর্তে একটি মজার তথ্য আনা সম্ভব হচ্ছে না।",
 		funHealthFact: "মজার স্বাস্থ্য তথ্য!",
 		yourProfile: "আপনার প্রোফাইল",
