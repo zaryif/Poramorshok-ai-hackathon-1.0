@@ -6,6 +6,7 @@ import React, {
 	useMemo,
 	useCallback,
 } from "react";
+import { useAuth } from "../src/contexts/AuthContext";
 import { userService } from "../src/services/database";
 
 type Language = "en" | "bn";
@@ -516,6 +517,7 @@ export const LanguageContext = createContext<LanguageContextType | undefined>(
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({
 	children,
 }) => {
+	const { user } = useAuth();
 	const [language, setLanguage] = useState<Language>(() => {
 		const storedLang =
 			typeof window !== "undefined"
@@ -528,12 +530,26 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({
 		localStorage.setItem("language", language);
 	}, [language]);
 
+	// Load user's language preference when user logs in
+	useEffect(() => {
+		if (user) {
+			loadUserLanguagePreference(user.id);
+		}
+	}, [user]);
+
 	const toggleLanguage = useCallback(async () => {
 		const newLang = language === "en" ? "bn" : "en";
 		setLanguage(newLang);
-		// Note: Language preference will be updated via updateLanguagePreference
-		// when Settings component detects the change
-	}, [language]);
+		
+		// Update in database if user is authenticated
+		if (user) {
+			try {
+				await updateLanguagePreference(user.id, newLang);
+			} catch (error) {
+				console.error('Failed to update language preference in database:', error);
+			}
+		}
+	}, [language, user]);
 
 	const updateLanguagePreference = useCallback(
 		async (userId: string, lang: Language) => {

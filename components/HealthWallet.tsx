@@ -2,6 +2,8 @@ import React, { useState, useEffect, ReactNode, useCallback, useRef } from 'reac
 import { createPortal } from 'react-dom';
 import { MedicalRecord, Prescription, Insurance, Drug } from '../types';
 import { useLanguage } from '../hooks/useLanguage';
+import { useAuth } from '../src/contexts/AuthContext';
+import { medicalRecordsService, prescriptionsService, insuranceService } from '../src/services/database';
 import Icon from './Icon';
 import { useReminders } from '../contexts/ReminderContext';
 
@@ -65,11 +67,14 @@ const Accordion: React.FC<{ title: string; icon: string; children: ReactNode; ac
 
 const HealthWallet: React.FC = () => {
     const { t, language } = useLanguage();
+    const { user } = useAuth();
     const { permissionStatus, requestPermission, scheduleReminders } = useReminders();
     const [records, setRecords] = useState<MedicalRecord[]>([]);
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
     const [insurance, setInsurance] = useState<Insurance | null>(null);
     const [modalState, setModalState] = useState<ModalState>({ isOpen: false, type: null });
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Form State
@@ -77,7 +82,70 @@ const HealthWallet: React.FC = () => {
     const [formFile, setFormFile] = useState<{ data: string; type: string; name: string; } | null>(null);
     const [formErrors, setFormErrors] = useState<{ [key: string]: string | { [key: string]: string } }>({});
 
-    useEffect(() => {
+    // Load data from database or localStorage fallback
+    const loadData = useCallback(async () => {
+        if (user) {
+            // Load from database for authenticated users
+            setLoading(true);
+            setError(null);
+            try {
+                // Load medical records
+                const dbRecords = await medicalRecordsService.getRecords(user.id);
+                const formattedRecords: MedicalRecord[] = dbRecords.map(record => ({
+                    id: record.id,
+                    name: record.name,
+                    date: record.issue_date,
+                    fileData: record.file_data,
+                    fileType: record.file_type,
+                }));
+                setRecords(formattedRecords);
+
+                // Load prescriptions
+                const dbPrescriptions = await prescriptionsService.getPrescriptions(user.id);
+                const formattedPrescriptions: Prescription[] = dbPrescriptions.map(prescription => ({
+                    id: prescription.id,
+                    doctor: prescription.prescribing_doctor,
+                    date: prescription.issue_date,
+                    drugs: prescription.prescription_drugs?.map(drug => ({
+                        id: drug.id,
+                        name: drug.drug_name,
+                        dosage: drug.dosage,
+                        reminderEnabled: drug.reminder_enabled || false,
+                        reminderTimes: drug.drug_reminder_times?.map(rt => rt.reminder_time) || [],
+                    })) || [],
+                    fileData: prescription.file_data,
+                    fileType: prescription.file_type,
+                }));
+                setPrescriptions(formattedPrescriptions);
+
+                // Load insurance
+                const dbInsurance = await insuranceService.getInsurance(user.id);
+                if (dbInsurance) {
+                    const formattedInsurance: Insurance = {
+                        id: dbInsurance.id,
+                        provider: dbInsurance.provider_name,
+                        policyNumber: dbInsurance.policy_number,
+                        contact: dbInsurance.contact_info || '',
+                        fileData: dbInsurance.file_data,
+                        fileType: dbInsurance.file_type,
+                    };
+                    setInsurance(formattedInsurance);
+                }
+            } catch (error) {
+                console.error("Failed to load health wallet data from database:", error);
+                setError("Failed to load data from database. Using local storage.");
+                // Fallback to localStorage
+                loadFromLocalStorage();
+            } finally {
+                setLoading(false);
+            }
+        } else {
+            // Load from localStorage for non-authenticated users
+            loadFromLocalStorage();
+        }
+    }, [user]);
+
+    const loadFromLocalStorage = () => {
         try {
             const storedRecords = localStorage.getItem('medicalRecords');
             if (storedRecords) setRecords(JSON.parse(storedRecords));
@@ -87,8 +155,14 @@ const HealthWallet: React.FC = () => {
 
             const storedInsurance = localStorage.getItem('insurance');
             if (storedInsurance) setInsurance(JSON.parse(storedInsurance));
-        } catch (error) { console.error("Failed to load from localStorage", error); }
-    }, []);
+        } catch (error) { 
+            console.error("Failed to load from localStorage", error); 
+        }
+    };
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     const handleCloseModal = useCallback(() => {
         setModalState({ isOpen: false, type: null });
@@ -123,12 +197,33 @@ const HealthWallet: React.FC = () => {
     }, [modalState.isOpen]);
 
 
-    const saveData = useCallback((key: string, data: any) => {
-        localStorage.setItem(key, JSON.stringify(data));
+    const saveData = useCallback(async (key: string, data: any) => {
+        if (user) {
+            // Save to database for authenticated users
+            try {
+                if (key === 'prescriptions') {
+                    // We don't need to save prescriptions array here as individual prescriptions are saved in handleSave
+                    scheduleReminders();
+                } else if (key === 'insurance') {
+                    // Individual insurance is saved in handleSave
+                } else if (key === 'medicalRecords') {
+                    // Individual records are saved in handleSave
+                }
+            } catch (error) {
+                console.error(`Failed to save ${key} to database:`, error);
+                setError(`Failed to save ${key} to database. Saving to local storage as backup.`);
+                // Fallback to localStorage
+                localStorage.setItem(key, JSON.stringify(data));
+            }
+        } else {
+            // Save to localStorage for non-authenticated users
+            localStorage.setItem(key, JSON.stringify(data));
+        }
+        
         if (key === 'prescriptions') {
             scheduleReminders();
         }
-    }, [scheduleReminders]);
+    }, [user, scheduleReminders]);
 
     const resetForm = () => {
         setFormValues({ drugs: [{ id: Date.now().toString(), name: '', dosage: '', reminderEnabled: false, reminderTimes: [] }] });
@@ -183,8 +278,11 @@ const HealthWallet: React.FC = () => {
         return Object.keys(errors).length === 0;
     };
     
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!validateForm()) return;
+        
+        setLoading(true);
+        setError(null);
         
         try {
             const id = Date.now().toString();
@@ -198,13 +296,30 @@ const HealthWallet: React.FC = () => {
                         fileData: formFile!.data,
                         fileType: formFile!.type,
                     };
-                    const updatedRecords = [...records, newRecord];
-                    setRecords(updatedRecords);
-                    saveData('medicalRecords', updatedRecords);
+
+                    if (user) {
+                        // Save to database
+                        await medicalRecordsService.addRecord({
+                            user_id: user.id,
+                            name: formValues.name,
+                            issue_date: formValues.date,
+                            record_type: 'medical_document', // Default type
+                            file_data: formFile!.data,
+                            file_type: formFile!.type,
+                        });
+                    } else {
+                        // Save to localStorage for non-authenticated users
+                        const updatedRecords = [...records, newRecord];
+                        setRecords(updatedRecords);
+                        localStorage.setItem('medicalRecords', JSON.stringify(updatedRecords));
+                    }
+                    
+                    // Reload data to get the updated list
+                    await loadData();
                     break;
                 }
                 case 'prescription': {
-                     const newPrescription: Prescription = {
+                    const newPrescription: Prescription = {
                         id,
                         doctor: formValues.doctor,
                         date: formValues.date,
@@ -214,13 +329,38 @@ const HealthWallet: React.FC = () => {
                         fileData: formFile?.data,
                         fileType: formFile?.type,
                     };
-                    const updatedPrescriptions = [...prescriptions, newPrescription];
-                    setPrescriptions(updatedPrescriptions);
-                    saveData('prescriptions', updatedPrescriptions);
+
+                    if (user) {
+                        // Save to database
+                        const validDrugs = formValues.drugs.filter((d: Drug) => d.name && d.dosage);
+                        const drugData = validDrugs.map((drug: Drug) => ({
+                            drug_name: drug.name,
+                            dosage: drug.dosage,
+                            reminder_enabled: drug.reminderEnabled || false,
+                            // We'll handle reminder times separately
+                        }));
+
+                        await prescriptionsService.addPrescription({
+                            user_id: user.id,
+                            prescribing_doctor: formValues.doctor,
+                            issue_date: formValues.date,
+                            file_data: formFile?.data || null,
+                            file_type: formFile?.type || null,
+                        }, drugData);
+                    } else {
+                        // Save to localStorage for non-authenticated users
+                        const updatedPrescriptions = [...prescriptions, newPrescription];
+                        setPrescriptions(updatedPrescriptions);
+                        localStorage.setItem('prescriptions', JSON.stringify(updatedPrescriptions));
+                    }
+                    
+                    // Reload data and schedule reminders
+                    await loadData();
+                    scheduleReminders();
                     break;
                 }
                 case 'insurance': {
-                     const newInsurance: Insurance = {
+                    const newInsurance: Insurance = {
                         id: modalState.data?.id || id,
                         provider: formValues.provider,
                         policyNumber: formValues.policyNumber,
@@ -228,31 +368,146 @@ const HealthWallet: React.FC = () => {
                         fileData: formFile?.data,
                         fileType: formFile?.type,
                     };
-                    setInsurance(newInsurance);
-                    saveData('insurance', newInsurance);
+
+                    if (user) {
+                        // Save to database
+                        await insuranceService.upsertInsurance({
+                            user_id: user.id,
+                            provider_name: formValues.provider,
+                            policy_number: formValues.policyNumber,
+                            contact_info: formValues.contact || '',
+                            file_data: formFile?.data || null,
+                            file_type: formFile?.type || null,
+                        });
+                    } else {
+                        // Save to localStorage for non-authenticated users
+                        setInsurance(newInsurance);
+                        localStorage.setItem('insurance', JSON.stringify(newInsurance));
+                    }
+                    
+                    // Reload data to get the updated info
+                    await loadData();
                     break;
                 }
             }
         } catch (error) {
-            console.error("Failed to save data to localStorage:", error);
+            console.error("Failed to save data:", error);
+            setError("Failed to save data. Please try again.");
+            
+            // Fallback to localStorage for authenticated users if database fails
+            if (user) {
+                try {
+                    const fallbackData = {
+                        record: () => {
+                            const newRecord: MedicalRecord = {
+                                id: Date.now().toString(),
+                                name: formValues.name,
+                                date: formValues.date,
+                                fileData: formFile!.data,
+                                fileType: formFile!.type,
+                            };
+                            const updatedRecords = [...records, newRecord];
+                            setRecords(updatedRecords);
+                            localStorage.setItem('medicalRecords', JSON.stringify(updatedRecords));
+                        },
+                        prescription: () => {
+                            const newPrescription: Prescription = {
+                                id: Date.now().toString(),
+                                doctor: formValues.doctor,
+                                date: formValues.date,
+                                drugs: formValues.drugs
+                                    .filter((d: Drug) => d.name && d.dosage)
+                                    .map((d: Drug) => ({...d, reminderTimes: d.reminderEnabled ? d.reminderTimes : []})),
+                                fileData: formFile?.data,
+                                fileType: formFile?.type,
+                            };
+                            const updatedPrescriptions = [...prescriptions, newPrescription];
+                            setPrescriptions(updatedPrescriptions);
+                            localStorage.setItem('prescriptions', JSON.stringify(updatedPrescriptions));
+                            scheduleReminders();
+                        },
+                        insurance: () => {
+                            const newInsurance: Insurance = {
+                                id: modalState.data?.id || Date.now().toString(),
+                                provider: formValues.provider,
+                                policyNumber: formValues.policyNumber,
+                                contact: formValues.contact || '',
+                                fileData: formFile?.data,
+                                fileType: formFile?.type,
+                            };
+                            setInsurance(newInsurance);
+                            localStorage.setItem('insurance', JSON.stringify(newInsurance));
+                        }
+                    };
+                    
+                    if (modalState.type) {
+                        fallbackData[modalState.type]();
+                    }
+                } catch (fallbackError) {
+                    console.error("Fallback save also failed:", fallbackError);
+                }
+            }
         } finally {
+            setLoading(false);
             handleCloseModal();
         }
     };
 
-    const handleDelete = (id: string, type: 'record' | 'prescription' | 'insurance') => {
+    const handleDelete = async (id: string, type: 'record' | 'prescription' | 'insurance') => {
         if (!window.confirm(t('deleteConfirmation'))) return;
-        if (type === 'record') {
-            const updated = records.filter(r => r.id !== id);
-            setRecords(updated);
-            saveData('medicalRecords', updated);
-        } else if (type === 'prescription') {
-            const updated = prescriptions.filter(p => p.id !== id);
-            setPrescriptions(updated);
-            saveData('prescriptions', updated);
-        } else if (type === 'insurance') {
-            setInsurance(null);
-            localStorage.removeItem('insurance');
+        
+        setLoading(true);
+        setError(null);
+        
+        try {
+            if (user) {
+                // Delete from database
+                if (type === 'record') {
+                    await medicalRecordsService.deleteRecord(id);
+                } else if (type === 'prescription') {
+                    await prescriptionsService.deletePrescription(id);
+                } else if (type === 'insurance') {
+                    await insuranceService.deleteInsurance(user.id);
+                }
+                
+                // Reload data to reflect changes
+                await loadData();
+            } else {
+                // Delete from localStorage for non-authenticated users
+                if (type === 'record') {
+                    const updated = records.filter(r => r.id !== id);
+                    setRecords(updated);
+                    localStorage.setItem('medicalRecords', JSON.stringify(updated));
+                } else if (type === 'prescription') {
+                    const updated = prescriptions.filter(p => p.id !== id);
+                    setPrescriptions(updated);
+                    localStorage.setItem('prescriptions', JSON.stringify(updated));
+                } else if (type === 'insurance') {
+                    setInsurance(null);
+                    localStorage.removeItem('insurance');
+                }
+            }
+        } catch (error) {
+            console.error(`Failed to delete ${type}:`, error);
+            setError(`Failed to delete ${type}. Please try again.`);
+            
+            // For authenticated users, fallback to localStorage update
+            if (user) {
+                if (type === 'record') {
+                    const updated = records.filter(r => r.id !== id);
+                    setRecords(updated);
+                    localStorage.setItem('medicalRecords', JSON.stringify(updated));
+                } else if (type === 'prescription') {
+                    const updated = prescriptions.filter(p => p.id !== id);
+                    setPrescriptions(updated);
+                    localStorage.setItem('prescriptions', JSON.stringify(updated));
+                } else if (type === 'insurance') {
+                    setInsurance(null);
+                    localStorage.removeItem('insurance');
+                }
+            }
+        } finally {
+            setLoading(false);
         }
     };
     
@@ -485,6 +740,33 @@ const HealthWallet: React.FC = () => {
                 <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200">{t('walletTitle')}</h2>
                 <p className="mt-2 max-w-2xl mx-auto text-sm text-gray-600 dark:text-gray-400">{t('walletDescription')}</p>
             </div>
+
+            {/* Loading and Error Display */}
+            {loading && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <div className="flex items-center space-x-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                        <span className="text-blue-700 dark:text-blue-300 text-sm">
+                            {user ? t('savingToDatabase') || 'Saving to database...' : t('processing') || 'Processing...'}
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            {error && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                    <div className="flex items-center space-x-2">
+                        <Icon name="warning" className="h-5 w-5 text-red-600 dark:text-red-400" />
+                        <span className="text-red-700 dark:text-red-300 text-sm">{error}</span>
+                        <button 
+                            onClick={() => setError(null)}
+                            className="ml-auto text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
+                        >
+                            <Icon name="x" className="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <style>{`
                 .input-style {
