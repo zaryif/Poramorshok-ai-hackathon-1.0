@@ -8,7 +8,7 @@ import React, {
 import * as htmlToImage from "html-to-image";
 import { HealthEntry, HealthAdvice } from "../types";
 import { getHealthAdvice } from "../services/geminiService";
-import { healthService } from "../src/services/database";
+import { healthService, healthAdviceService } from "../src/services/database";
 import { useAuth } from "../src/contexts/AuthContext";
 import Icon from "./Icon";
 import Loader from "./Loader";
@@ -210,7 +210,27 @@ const HealthTracker: React.FC = () => {
 			try {
 				const newAdvice = await getHealthAdvice(currentHistory, lang);
 				setAdvice(newAdvice);
-				localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
+				
+				// Save to database if user is authenticated
+				if (user) {
+					try {
+						await healthAdviceService.addAdvice({
+							user_id: user.id,
+							language: lang,
+							dietary_advice: newAdvice.dietaryAdvice,
+							exercise_recommendations: newAdvice.exerciseRecommendations,
+							lifestyle_suggestions: newAdvice.lifestyleSuggestions,
+						});
+						console.log('Health advice saved to database successfully');
+					} catch (saveError) {
+						console.error('Failed to save health advice to database:', saveError);
+						// Still save to localStorage as fallback
+						localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
+					}
+				} else {
+					// Save to localStorage for non-authenticated users
+					localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
+				}
 			} catch (error) {
 				console.error(error);
 				const message =
@@ -220,7 +240,7 @@ const HealthTracker: React.FC = () => {
 				setIsLoadingAdvice(false);
 			}
 		},
-		[t]
+		[t, user]
 	);
 
 	// Load health data from database or localStorage fallback
@@ -282,30 +302,53 @@ const HealthTracker: React.FC = () => {
 	}, [loadHealthData]);
 
 	useEffect(() => {
-		if (history.length > 0) {
-			// Always save to localStorage as backup
-			localStorage.setItem("healthHistory", JSON.stringify(history));
+		const loadHealthAdvice = async () => {
+			if (history.length > 0) {
+				// Always save to localStorage as backup
+				localStorage.setItem("healthHistory", JSON.stringify(history));
 
-			try {
-				const storedAdvice = localStorage.getItem(`healthAdvice_${language}`);
-				if (storedAdvice) {
-					setAdvice(JSON.parse(storedAdvice));
-				} else {
+				// Load advice from database or localStorage
+				if (user) {
+					try {
+						const dbAdvice = await healthAdviceService.getAdvice(user.id, language);
+						if (dbAdvice) {
+							const formattedAdvice: HealthAdvice = {
+								dietaryAdvice: dbAdvice.dietary_advice,
+								exerciseRecommendations: dbAdvice.exercise_recommendations,
+								lifestyleSuggestions: dbAdvice.lifestyle_suggestions,
+							};
+							setAdvice(formattedAdvice);
+							return;
+						}
+					} catch (error) {
+						console.error("Failed to load health advice from database:", error);
+					}
+				}
+
+				// Fallback to localStorage or generate new advice
+				try {
+					const storedAdvice = localStorage.getItem(`healthAdvice_${language}`);
+					if (storedAdvice) {
+						setAdvice(JSON.parse(storedAdvice));
+					} else {
+						fetchAdvice(history, language);
+					}
+				} catch (error) {
+					console.error("Failed to parse advice from localStorage", error);
+					localStorage.removeItem(`healthAdvice_${language}`);
 					fetchAdvice(history, language);
 				}
-			} catch (error) {
-				console.error("Failed to parse advice from localStorage", error);
-				localStorage.removeItem(`healthAdvice_${language}`);
-				fetchAdvice(history, language);
+			} else {
+				// Clear localStorage when no history
+				localStorage.removeItem("healthHistory");
+				localStorage.removeItem("healthAdvice_en");
+				localStorage.removeItem("healthAdvice_bn");
+				setAdvice(null);
 			}
-		} else {
-			// Clear localStorage when no history
-			localStorage.removeItem("healthHistory");
-			localStorage.removeItem("healthAdvice_en");
-			localStorage.removeItem("healthAdvice_bn");
-			setAdvice(null);
-		}
-	}, [history, language, fetchAdvice]);
+		};
+
+		loadHealthAdvice();
+	}, [history, language, fetchAdvice, user]);
 
 	useEffect(() => {
 		if (heightUnit === "ft") {

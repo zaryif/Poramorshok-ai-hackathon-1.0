@@ -4,6 +4,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import * as htmlToImage from 'html-to-image';
 import { DietGoal, ExercisePlan, ExercisePlanRequest, HealthEntry, FitnessLevel, ExerciseLocation } from '../types';
 import { generateExercisePlan } from '../services/geminiService';
+import { useAuth } from '../src/contexts/AuthContext';
+import { exerciseService, healthService } from '../src/services/database';
 import Icon from './Icon';
 import Loader from './Loader';
 import Disclaimer from './Disclaimer';
@@ -11,6 +13,7 @@ import { useLanguage } from '../hooks/useLanguage';
 import { useTheme } from '../contexts/ThemeContext';
 
 const ExercisePlanner: React.FC = () => {
+    const { user } = useAuth();
     const [goal, setGoal] = useState<DietGoal>('maintain-weight');
     const [fitnessLevel, setFitnessLevel] = useState<FitnessLevel>('beginner');
     const [location, setLocation] = useState<ExerciseLocation>('home');
@@ -19,6 +22,8 @@ const ExercisePlanner: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [latestHealthData, setLatestHealthData] = useState<HealthEntry | null>(null);
+    const [savedPlans, setSavedPlans] = useState<ExercisePlan[]>([]);
+    const [showPlanHistory, setShowPlanHistory] = useState(false);
     const planRef = useRef<HTMLDivElement>(null);
     const { language, t } = useLanguage();
     const { theme } = useTheme();
@@ -47,7 +52,40 @@ const ExercisePlanner: React.FC = () => {
         { value: '60', labelKey: 'time60min' },
     ];
 
+    // Load health data and saved plans
     useEffect(() => {
+        loadHealthData();
+        loadSavedPlans();
+    }, [user]);
+
+    const loadHealthData = useCallback(async () => {
+        if (user) {
+            // Load from database for authenticated users
+            try {
+                const dbEntries = await healthService.getEntries(user.id);
+                if (dbEntries.length > 0) {
+                    const latestEntry = dbEntries[0]; // Already ordered by date desc
+                    const formattedEntry: HealthEntry = {
+                        date: latestEntry.date,
+                        age: latestEntry.age,
+                        height: latestEntry.height_cm,
+                        weight: latestEntry.weight_kg,
+                        bmi: latestEntry.bmi,
+                    };
+                    setLatestHealthData(formattedEntry);
+                }
+            } catch (error) {
+                console.error("Failed to load health data from database:", error);
+                // Fallback to localStorage
+                loadHealthDataFromLocalStorage();
+            }
+        } else {
+            // Load from localStorage for non-authenticated users
+            loadHealthDataFromLocalStorage();
+        }
+    }, [user]);
+
+    const loadHealthDataFromLocalStorage = () => {
         try {
             const storedHistory = localStorage.getItem('healthHistory');
             if (storedHistory) {
@@ -59,7 +97,31 @@ const ExercisePlanner: React.FC = () => {
         } catch (error) {
             console.error("Failed to parse health history for exercise planner", error);
         }
-    }, []);
+    };
+
+    const loadSavedPlans = useCallback(async () => {
+        if (user) {
+            try {
+                const dbPlans = await exerciseService.getPlans(user.id);
+                const formattedPlans: ExercisePlan[] = dbPlans.map(dbPlan => ({
+                    summary: dbPlan.summary,
+                    plan: dbPlan.exercise_plan_days?.map(day => ({
+                        day: day.day_name,
+                        details: day.details || '',
+                        exercises: day.exercise_plan_exercises?.map(exercise => ({
+                            name: exercise.exercise_name,
+                            description: exercise.description || '',
+                            duration: exercise.duration || '',
+                            type: exercise.exercise_type || 'cardio',
+                        })) || [],
+                    })) || [],
+                }));
+                setSavedPlans(formattedPlans);
+            } catch (error) {
+                console.error("Failed to load saved exercise plans:", error);
+            }
+        }
+    }, [user]);
 
     const handleGeneratePlan = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
@@ -84,13 +146,48 @@ const ExercisePlanner: React.FC = () => {
         try {
             const newPlan = await generateExercisePlan(request, language);
             setPlan(newPlan);
+
+            // Save to database if user is authenticated
+            if (user) {
+                try {
+                    const daysData = newPlan.plan.map((day, index) => ({
+                        day_name: day.day,
+                        details: day.details,
+                        day_order: index + 1,
+                        exercises: day.exercises.map((exercise, exerciseIndex) => ({
+                            exercise_name: exercise.name,
+                            description: exercise.description,
+                            duration: exercise.duration,
+                            exercise_type: exercise.type,
+                            exercise_order: exerciseIndex + 1,
+                        })),
+                    }));
+
+                    await exerciseService.addPlan({
+                        user_id: user.id,
+                        goal: goal,
+                        fitness_level: fitnessLevel,
+                        location: location,
+                        time_per_day: `${timePerDay} minutes`,
+                        summary: newPlan.summary,
+                        language: language,
+                    }, daysData);
+
+                    // Reload saved plans to include the new one
+                    await loadSavedPlans();
+                    console.log('Exercise plan saved to database successfully');
+                } catch (saveError) {
+                    console.error('Failed to save exercise plan to database:', saveError);
+                    setError('Plan generated successfully, but failed to save to database for future access.');
+                }
+            }
         } catch (err) {
             const message = err instanceof Error ? err.message : t('unknownError');
             setError(message);
         } finally {
             setIsLoading(false);
         }
-    }, [goal, latestHealthData, fitnessLevel, location, timePerDay, language, t]);
+    }, [goal, latestHealthData, fitnessLevel, location, timePerDay, language, t, user, loadSavedPlans]);
     
     const exerciseTypeColors: {[key: string]: string} = {
         'Cardio': 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
