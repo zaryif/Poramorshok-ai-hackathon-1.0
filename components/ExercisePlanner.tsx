@@ -436,7 +436,7 @@ const ExercisePlanner: React.FC = () => {
 								<span>
 									{t("usingLatestHealthData", {
 										age: latestHealthData.age,
-										bmi: latestHealthData.bmi?.toFixed(2) || 'N/A',
+										bmi: latestHealthData.bmi?.toFixed(2) || "N/A",
 									})}
 								</span>
 							</div>

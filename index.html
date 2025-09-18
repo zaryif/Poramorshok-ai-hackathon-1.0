@@ -37,8 +37,6 @@
 		<meta name="msapplication-TileColor" content="#14B8A6" />
 		<meta name="theme-color" content="#14B8A6" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<!-- Google Fonts: Inria Sans (English), Hind Siliguri (Bangla) -->
-		<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;700&family=Inria+Sans:wght@400;700&display=swap" rel="stylesheet" />
 		<title>পরামর্শক AI</title>
 		<script>
 			// Apply theme from localStorage before page load to prevent flash
@@ -52,75 +50,6 @@
 				document.documentElement.classList.remove("dark");
 			}
 		</script>
-		<script src="https://cdn.tailwindcss.com"></script>
-		<script>
-			tailwind.config = {
-				darkMode: "class", // Enable dark mode using a class
-				theme: {
-					extend: {
-						fontFamily: {
-							sans: [
-								"-apple-system",
-								"BlinkMacSystemFont",
-								'"Segoe UI"',
-								"Roboto",
-								'"Helvetica Neue"',
-								"Arial",
-								'"Noto Sans"',
-								"sans-serif",
-								'"Apple Color Emoji"',
-								'"Segoe UI Emoji"',
-								'"Segoe UI Symbol"',
-								'"Noto Color Emoji"',
-							],
-						},
-						keyframes: {
-							"fade-in-up": {
-								from: { opacity: "0", transform: "translateY(20px)" },
-								to: { opacity: "1", transform: "translateY(0)" },
-							},
-						},
-						animation: {
-							"fade-in-up": "fade-in-up 0.5s ease-out forwards",
-						},
-					},
-				},
-			};
-		</script>
-		<style>
-			.accordion-content {
-				display: grid;
-				grid-template-rows: 0fr;
-				transition: grid-template-rows 0.35s ease-in-out;
-			}
-			.accordion-content-inner {
-				overflow: hidden;
-			}
-			.accordion-open {
-				grid-template-rows: 1fr;
-      } </style>
-			<script>
-				tailwind.config = {
-					darkMode: 'class',
-					theme: {
-						extend: {
-							fontFamily: {
-								inria: ['Inria Sans', 'sans-serif'],
-								hind: ['Hind Siliguri', 'sans-serif'],
-								sans: ['Inria Sans', 'Hind Siliguri', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', '"Noto Sans"', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
-							},
-							keyframes: {
-								'fade-in-up': {
-									'from': { opacity: '0', transform: 'translateY(20px)' },
-									'to': { opacity: '1', transform: 'translateY(0)' },
-								},
-							},
-							animation: {
-								'fade-in-up': 'fade-in-up 0.5s ease-out forwards',
-							},
-						}
-					}
-				} </script>
 	<body class="bg-gray-100 dark:bg-zinc-950">
 		<div id="root"></div>
 		<script type="module" src="/index.tsx"></script>

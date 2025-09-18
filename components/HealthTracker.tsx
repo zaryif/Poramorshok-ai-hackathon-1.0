@@ -231,7 +231,6 @@ const HealthTracker: React.FC = () => {
 							};
 							setAdvice(formattedAdvice);
 							setLoadingAdvice(false);
-
 							setIsLoadingAdvice(false);
 							return;
 						}
@@ -345,10 +344,9 @@ const HealthTracker: React.FC = () => {
 	}, [loadHealthData]);
 
 	useEffect(() => {
-		const loadHealthAdvice = async () => {
-			if (history.length > 0) {
-				// Always save to localStorage as backup
-				localStorage.setItem("healthHistory", JSON.stringify(history));
+		if (history.length > 0) {
+			// Always save to localStorage as backup
+			localStorage.setItem("healthHistory", JSON.stringify(history));
 			// For authenticated users, fetch advice from database or generate new
 			if (user) {
 				fetchAdvice(history, language);
