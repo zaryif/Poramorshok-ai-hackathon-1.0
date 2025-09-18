@@ -122,12 +122,12 @@ const Chatbot: React.FC = () => {
 		}
 	}, [user]);
 
-	// Save message to database
+	// Save message to database (database-first approach)
 	const saveMessage = useCallback(
 		async (newMessage: ChatMessage) => {
 			if (!user) {
-				// No authenticated user, just update local state
-				// Chat history won't be persisted
+				// For non-authenticated users, just update local state
+				// Chat history won't be persisted across sessions
 				setMessages((prev) => [...prev, newMessage]);
 				return;
 			}
@@ -168,8 +168,9 @@ const Chatbot: React.FC = () => {
 				setMessages((prev) => [...prev, newMessage]);
 			} catch (error) {
 				console.error("Failed to save message to database:", error);
-				// Still update local state for this session
-				setMessages((prev) => [...prev, newMessage]);
+				// For authenticated users, don't save locally if database fails
+				// This ensures consistency and encourages proper error handling
+				throw error;
 			}
 		},
 		[user, currentSessionId]
@@ -195,17 +196,6 @@ const Chatbot: React.FC = () => {
 	useEffect(() => {
 		loadChatHistory();
 	}, [loadChatHistory]);
-
-	// Legacy localStorage sync (for backward compatibility)
-	useEffect(() => {
-		if (!user && messages.length > 0) {
-			try {
-				localStorage.setItem("chatHistory", JSON.stringify(messages));
-			} catch (err) {
-				console.error("Failed to save chat history to localStorage", err);
-			}
-		}
-	}, [messages, user]);
 
 	const scrollToBottom = () => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
