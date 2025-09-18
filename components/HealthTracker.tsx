@@ -326,32 +326,34 @@ const HealthTracker: React.FC = () => {
 				// Always save to localStorage as backup
 				localStorage.setItem("healthHistory", JSON.stringify(history));
 
-			if (user) {
-				// For authenticated users, always fetch advice to get latest from database
-				fetchAdvice(history, language);
-			} else {
-				// For non-authenticated users, try localStorage first
-				try {
-					const storedAdvice = localStorage.getItem(`healthAdvice_${language}`);
-					if (storedAdvice) {
-						setAdvice(JSON.parse(storedAdvice));
-					} else {
+				if (user) {
+					// For authenticated users, always fetch advice to get latest from database
+					fetchAdvice(history, language);
+				} else {
+					// For non-authenticated users, try localStorage first
+					try {
+						const storedAdvice = localStorage.getItem(`healthAdvice_${language}`);
+						if (storedAdvice) {
+							setAdvice(JSON.parse(storedAdvice));
+						} else {
+							fetchAdvice(history, language);
+						}
+					} catch (error) {
+						console.error("Failed to parse advice from localStorage", error);
+						localStorage.removeItem(`healthAdvice_${language}`);
 						fetchAdvice(history, language);
 					}
-				} catch (error) {
-					console.error("Failed to parse advice from localStorage", error);
-					localStorage.removeItem(`healthAdvice_${language}`);
-					fetchAdvice(history, language);
 				}
+			} else {
+				// Clear localStorage when no history
+				localStorage.removeItem("healthHistory");
+				localStorage.removeItem("healthAdvice_en");
+				localStorage.removeItem("healthAdvice_bn");
+				setAdvice(null);
 			}
-		} else {
-			// Clear localStorage when no history
-			localStorage.removeItem("healthHistory");
-			localStorage.removeItem("healthAdvice_en");
-			localStorage.removeItem("healthAdvice_bn");
-			setAdvice(null);
-		}
+		};
 
+		loadHealthAdvice();
 	}, [history, language, fetchAdvice, user]);
 
 	useEffect(() => {
