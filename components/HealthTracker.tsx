@@ -8,7 +8,7 @@ import React, {
 import * as htmlToImage from "html-to-image";
 import { HealthEntry, HealthAdvice } from "../types";
 import { getHealthAdvice } from "../services/geminiService";
-import { healthService } from "../src/services/database";
+import { healthService, healthAdviceService } from "../src/services/database";
 import { useAuth } from "../src/contexts/AuthContext";
 import Icon from "./Icon";
 import Loader from "./Loader";
@@ -193,6 +193,9 @@ const HealthTracker: React.FC = () => {
 	const [loadingHistory, setLoadingHistory] = useState(false);
 	const [savingEntry, setSavingEntry] = useState(false);
 	const [dbError, setDbError] = useState<string | null>(null);
+	const [loadingAdvice, setLoadingAdvice] = useState(false);
+	const [savingAdvice, setSavingAdvice] = useState(false);
+	const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
 	const downloadAreaRef = useRef<HTMLDivElement>(null);
 	const { language, t } = useLanguage();
 	const { theme } = useTheme();
@@ -207,9 +210,66 @@ const HealthTracker: React.FC = () => {
 			if (currentHistory.length === 0) return;
 			setIsLoadingAdvice(true);
 			setAdviceError(null);
+
 			try {
+				// Try to load from database first for authenticated users
+				if (user) {
+					setLoadingAdvice(true);
+					try {
+						const dbAdvice = await healthAdviceService.getAdvice(user.id, lang);
+						if (
+							dbAdvice &&
+							dbAdvice.based_on_entries_count === currentHistory.length
+						) {
+							// Use existing advice if it's based on the current number of entries
+							const formattedAdvice: HealthAdvice = {
+								dietaryAdvice: dbAdvice.dietary_advice as string[],
+								exerciseRecommendations:
+									dbAdvice.exercise_recommendations as string[],
+								lifestyleSuggestions:
+									dbAdvice.lifestyle_suggestions as string[],
+							};
+							setAdvice(formattedAdvice);
+							setLoadingAdvice(false);
+							setIsLoadingAdvice(false);
+							return;
+						}
+					} catch (dbError) {
+						console.log(
+							"No existing advice found in database, generating new..."
+						);
+					} finally {
+						setLoadingAdvice(false);
+					}
+				}
+
+				// Generate new advice
 				const newAdvice = await getHealthAdvice(currentHistory, lang);
 				setAdvice(newAdvice);
+
+				// Save to database for authenticated users
+				if (user) {
+					setSavingAdvice(true);
+					try {
+						const adviceEntry = {
+							user_id: user.id,
+							language: lang,
+							dietary_advice: newAdvice.dietaryAdvice,
+							exercise_recommendations: newAdvice.exerciseRecommendations,
+							lifestyle_suggestions: newAdvice.lifestyleSuggestions,
+							based_on_entries_count: currentHistory.length,
+						};
+						await healthAdviceService.addAdvice(adviceEntry);
+						console.log("Health advice saved to database successfully");
+					} catch (dbError) {
+						console.error("Failed to save advice to database:", dbError);
+						// Still continue - the advice is already displayed
+					} finally {
+						setSavingAdvice(false);
+					}
+				}
+
+				// Always save to localStorage as backup
 				localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
 			} catch (error) {
 				console.error(error);
@@ -220,7 +280,7 @@ const HealthTracker: React.FC = () => {
 				setIsLoadingAdvice(false);
 			}
 		},
-		[t]
+		[t, user]
 	);
 
 	// Load health data from database or localStorage fallback
@@ -232,6 +292,7 @@ const HealthTracker: React.FC = () => {
 			try {
 				const dbEntries = await healthService.getEntries(user.id);
 				const formattedEntries: HealthEntry[] = dbEntries.map((entry) => ({
+					id: entry.id,
 					date: entry.date,
 					age: entry.age,
 					height: entry.height_cm,
@@ -286,26 +347,32 @@ const HealthTracker: React.FC = () => {
 			// Always save to localStorage as backup
 			localStorage.setItem("healthHistory", JSON.stringify(history));
 
-			try {
-				const storedAdvice = localStorage.getItem(`healthAdvice_${language}`);
-				if (storedAdvice) {
-					setAdvice(JSON.parse(storedAdvice));
-				} else {
+			// For authenticated users, fetch advice from database or generate new
+			if (user) {
+				fetchAdvice(history, language);
+			} else {
+				// For non-authenticated users, try localStorage first
+				try {
+					const storedAdvice = localStorage.getItem(`healthAdvice_${language}`);
+					if (storedAdvice) {
+						setAdvice(JSON.parse(storedAdvice));
+					} else {
+						fetchAdvice(history, language);
+					}
+				} catch (error) {
+					console.error("Failed to parse advice from localStorage", error);
+					localStorage.removeItem(`healthAdvice_${language}`);
 					fetchAdvice(history, language);
 				}
-			} catch (error) {
-				console.error("Failed to parse advice from localStorage", error);
-				localStorage.removeItem(`healthAdvice_${language}`);
-				fetchAdvice(history, language);
 			}
 		} else {
-			// Clear localStorage when no history
+			// Clear data when no history
 			localStorage.removeItem("healthHistory");
 			localStorage.removeItem("healthAdvice_en");
 			localStorage.removeItem("healthAdvice_bn");
 			setAdvice(null);
 		}
-	}, [history, language, fetchAdvice]);
+	}, [history, language, fetchAdvice, user]);
 
 	useEffect(() => {
 		if (heightUnit === "ft") {
@@ -398,7 +465,8 @@ const HealthTracker: React.FC = () => {
 						bmi: newEntry.bmi,
 					};
 
-					await healthService.addEntry(dbEntry);
+					const savedEntry = await healthService.addEntry(dbEntry);
+					newEntry.id = savedEntry.id; // Add the database ID
 					console.log("Health entry saved to database successfully");
 					setDbError(null); // Clear any previous errors
 				}
@@ -434,6 +502,41 @@ const HealthTracker: React.FC = () => {
 			} finally {
 				setSavingEntry(false);
 			}
+		}
+	};
+
+	const handleDeleteEntry = async (entryId: string, entryDate: string) => {
+		if (!user || !entryId) return;
+
+		const confirmed = window.confirm(
+			t("confirmDeleteHealthEntry") ||
+				`Are you sure you want to delete the health entry from ${entryDate}?`
+		);
+
+		if (!confirmed) return;
+
+		setDeletingEntryId(entryId);
+		try {
+			// Delete from database
+			await healthService.deleteEntry(entryId);
+
+			// Update local state
+			const updatedHistory = history.filter((entry) => entry.id !== entryId);
+			setHistory(updatedHistory);
+
+			// Regenerate advice with updated data
+			if (updatedHistory.length > 0) {
+				fetchAdvice(updatedHistory, language);
+			} else {
+				setAdvice(null);
+			}
+
+			console.log("Health entry deleted successfully");
+		} catch (error) {
+			console.error("Failed to delete health entry:", error);
+			setDbError("Failed to delete entry from database.");
+		} finally {
+			setDeletingEntryId(null);
 		}
 	};
 
@@ -480,6 +583,40 @@ const HealthTracker: React.FC = () => {
 
 	return (
 		<div className="space-y-6 animate-fade-in-up">
+			{/* User Notice for Non-Authenticated Users */}
+			{!user && (
+				<div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+					<div className="flex items-start gap-3">
+						<div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+							<Icon name="user" className="h-5 w-5" />
+						</div>
+						<div>
+							<p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+								{t("healthAdviceNotSaved") || "Health advice won't be saved"}
+							</p>
+							<p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+								{t("loginToSaveHealthAdvice") ||
+									"Log in to save your health advice and access it across devices."}
+							</p>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Database Status Indicators */}
+			{user && (loadingAdvice || savingAdvice) && (
+				<div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
+					<div className="flex items-center gap-3">
+						<div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-500"></div>
+						<p className="text-sm text-green-800 dark:text-green-300">
+							{loadingAdvice
+								? "Loading health advice..."
+								: "Saving health advice..."}
+						</p>
+					</div>
+				</div>
+			)}
+
 			{/* Database Error Notification */}
 			{dbError && (
 				<div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700/50 rounded-md p-3">
@@ -835,6 +972,11 @@ const HealthTracker: React.FC = () => {
 												<th className="pb-3 text-left text-sm font-semibold text-gray-600 dark:text-gray-400">
 													BMI
 												</th>
+												{user && (
+													<th className="pb-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-400">
+														{t("actionsLabel") || "Actions"}
+													</th>
+												)}
 											</tr>
 										</thead>
 										<tbody>
@@ -858,6 +1000,27 @@ const HealthTracker: React.FC = () => {
 													<td className="py-3 pr-4 whitespace-nowrap text-sm text-gray-800 dark:text-gray-300 font-semibold">
 														{entry.bmi.toFixed(2)}
 													</td>
+													{user && entry.id && (
+														<td className="py-3 text-right whitespace-nowrap text-sm">
+															<button
+																onClick={() =>
+																	handleDeleteEntry(entry.id!, entry.date)
+																}
+																disabled={deletingEntryId === entry.id}
+																className="inline-flex items-center px-2 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+																title={t("deleteEntry") || "Delete entry"}
+															>
+																{deletingEntryId === entry.id ? (
+																	<Icon
+																		name="loader"
+																		className="h-4 w-4 animate-spin"
+																	/>
+																) : (
+																	<Icon name="trash" className="h-4 w-4" />
+																)}
+															</button>
+														</td>
+													)}
 												</tr>
 											))}
 										</tbody>
