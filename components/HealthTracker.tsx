@@ -267,10 +267,10 @@ const HealthTracker: React.FC = () => {
 					} finally {
 						setSavingAdvice(false);
 					}
+				} else {
+					// Save to localStorage only for non-authenticated users
+					localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
 				}
-
-				// Always save to localStorage as backup
-				localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
 			} catch (error) {
 				console.error(error);
 				const message =
@@ -344,8 +344,10 @@ const HealthTracker: React.FC = () => {
 
 	useEffect(() => {
 		if (history.length > 0) {
-			// Always save to localStorage as backup
-			localStorage.setItem("healthHistory", JSON.stringify(history));
+			// Save to localStorage only for non-authenticated users
+			if (!user) {
+				localStorage.setItem("healthHistory", JSON.stringify(history));
+			}
 
 			// For authenticated users, fetch advice from database or generate new
 			if (user) {
@@ -366,10 +368,12 @@ const HealthTracker: React.FC = () => {
 				}
 			}
 		} else {
-			// Clear data when no history
-			localStorage.removeItem("healthHistory");
-			localStorage.removeItem("healthAdvice_en");
-			localStorage.removeItem("healthAdvice_bn");
+			// Clear data when no history - only for non-authenticated users
+			if (!user) {
+				localStorage.removeItem("healthHistory");
+				localStorage.removeItem("healthAdvice_en");
+				localStorage.removeItem("healthAdvice_bn");
+			}
 			setAdvice(null);
 		}
 	}, [history, language, fetchAdvice, user]);
