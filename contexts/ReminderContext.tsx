@@ -74,7 +74,7 @@ export const ReminderProvider: React.FC<{ children: ReactNode }> = ({ children }
                 const dbPrescriptions = await prescriptionsService.getPrescriptions(user.id);
                 prescriptions = dbPrescriptions.map(prescription => ({
                     id: prescription.id,
-                    doctor: prescription.prescribing_doctor,
+                    doctor: prescription.doctor_name,
                     date: prescription.issue_date,
                     drugs: prescription.prescription_drugs?.map(drug => ({
                         id: drug.id,

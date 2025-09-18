@@ -126,16 +126,16 @@ const ExercisePlanner: React.FC = () => {
 					fitness_level: fitnessLevel,
 					location: location,
 					time_per_day: timePerDay,
-					plan_name: `${goal.replace("-", " ")} plan for ${fitnessLevel}`,
+					advice: exercisePlan.advice,
 				};
 
 				// Prepare days data for database
-				const daysData = exercisePlan.days.map((day, index) => ({
+				const daysData = exercisePlan.plan.map((day, index) => ({
 					day_name: day.day,
 					details: day.details || "",
 					day_order: index + 1,
 					exercises: day.exercises.map((exercise, exerciseIndex) => ({
-						exercise_name: exercise.exercise,
+						exercise_name: exercise.name,
 						description: exercise.description || "",
 						duration: exercise.duration || "",
 						exercise_type: exercise.type || "General",
