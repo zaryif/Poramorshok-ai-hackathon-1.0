@@ -2,6 +2,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import * as htmlToImage from 'html-to-image';
 import { DietGoal, DietaryPreference, DietPlan, DietPlanRequest, HealthEntry } from '../types';
 import { generateDietPlan } from '../services/geminiService';
+import { useAuth } from '../src/contexts/AuthContext';
+import { dietService, healthService } from '../src/services/database';
 import Icon from './Icon';
 import Loader from './Loader';
 import Disclaimer from './Disclaimer';
@@ -9,12 +11,15 @@ import { useLanguage } from '../hooks/useLanguage';
 import { useTheme } from '../contexts/ThemeContext';
 
 const DietPlanner: React.FC = () => {
+    const { user } = useAuth();
     const [goal, setGoal] = useState<DietGoal>('maintain-weight');
     const [preference, setPreference] = useState<DietaryPreference>('non-vegetarian');
     const [plan, setPlan] = useState<DietPlan | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [latestHealthData, setLatestHealthData] = useState<HealthEntry | null>(null);
+    const [savedPlans, setSavedPlans] = useState<DietPlan[]>([]);
+    const [showPlanHistory, setShowPlanHistory] = useState(false);
     const planRef = useRef<HTMLDivElement>(null);
     const { language, t } = useLanguage();
     const { theme } = useTheme();
@@ -33,7 +38,40 @@ const DietPlanner: React.FC = () => {
     ];
 
 
+    // Load health data and saved plans
     useEffect(() => {
+        loadHealthData();
+        loadSavedPlans();
+    }, [user]);
+
+    const loadHealthData = useCallback(async () => {
+        if (user) {
+            // Load from database for authenticated users
+            try {
+                const dbEntries = await healthService.getEntries(user.id);
+                if (dbEntries.length > 0) {
+                    const latestEntry = dbEntries[0]; // Already ordered by date desc
+                    const formattedEntry: HealthEntry = {
+                        date: latestEntry.date,
+                        age: latestEntry.age,
+                        height: latestEntry.height_cm,
+                        weight: latestEntry.weight_kg,
+                        bmi: latestEntry.bmi,
+                    };
+                    setLatestHealthData(formattedEntry);
+                }
+            } catch (error) {
+                console.error("Failed to load health data from database:", error);
+                // Fallback to localStorage
+                loadHealthDataFromLocalStorage();
+            }
+        } else {
+            // Load from localStorage for non-authenticated users
+            loadHealthDataFromLocalStorage();
+        }
+    }, [user]);
+
+    const loadHealthDataFromLocalStorage = () => {
         try {
             const storedHistory = localStorage.getItem('healthHistory');
             if (storedHistory) {
@@ -45,7 +83,29 @@ const DietPlanner: React.FC = () => {
         } catch (error) {
             console.error("Failed to parse health history for diet planner", error);
         }
-    }, []);
+    };
+
+    const loadSavedPlans = useCallback(async () => {
+        if (user) {
+            try {
+                const dbPlans = await dietService.getPlans(user.id);
+                const formattedPlans: DietPlan[] = dbPlans.map(dbPlan => ({
+                    summary: dbPlan.summary,
+                    plan: dbPlan.diet_plan_days?.map(day => ({
+                        day: day.day_name,
+                        dailyNote: day.daily_note || '',
+                        meals: day.diet_plan_meals?.map(meal => ({
+                            name: meal.meal_name,
+                            items: meal.meal_items || [],
+                        })) || [],
+                    })) || [],
+                }));
+                setSavedPlans(formattedPlans);
+            } catch (error) {
+                console.error("Failed to load saved diet plans:", error);
+            }
+        }
+    }, [user]);
     
     const handleDownload = useCallback(() => {
         if (!plan) return;
@@ -131,13 +191,44 @@ const DietPlanner: React.FC = () => {
         try {
             const newPlan = await generateDietPlan(request, language);
             setPlan(newPlan);
+
+            // Save to database if user is authenticated
+            if (user) {
+                try {
+                    const daysData = newPlan.plan.map((day, index) => ({
+                        day_name: day.day,
+                        daily_note: day.dailyNote,
+                        day_order: index + 1,
+                        meals: day.meals.map((meal, mealIndex) => ({
+                            meal_name: meal.name,
+                            meal_items: meal.items,
+                            meal_order: mealIndex + 1,
+                        })),
+                    }));
+
+                    await dietService.addPlan({
+                        user_id: user.id,
+                        goal: goal,
+                        dietary_preference: preference,
+                        summary: newPlan.summary,
+                        language: language,
+                    }, daysData);
+
+                    // Reload saved plans to include the new one
+                    await loadSavedPlans();
+                    console.log('Diet plan saved to database successfully');
+                } catch (saveError) {
+                    console.error('Failed to save diet plan to database:', saveError);
+                    setError('Plan generated successfully, but failed to save to database for future access.');
+                }
+            }
         } catch (err) {
             const message = err instanceof Error ? err.message : t('unknownError');
             setError(message);
         } finally {
             setIsLoading(false);
         }
-    }, [goal, preference, latestHealthData, language, t]);
+    }, [goal, preference, latestHealthData, language, t, user, loadSavedPlans]);
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up">
