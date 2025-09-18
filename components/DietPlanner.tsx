@@ -74,12 +74,15 @@ const DietPlanner: React.FC = () => {
 				const healthEntries = await healthService.getEntries(user.id);
 				if (healthEntries && healthEntries.length > 0) {
 					const latestEntry = healthEntries[0]; // Assuming they're ordered by date desc
+					const heightInMeters = latestEntry.height_cm / 100;
+					const bmi = latestEntry.weight_kg / (heightInMeters * heightInMeters);
 					setLatestHealthData({
 						id: latestEntry.id,
 						date: latestEntry.date,
 						weight: latestEntry.weight_kg,
 						height: latestEntry.height_cm,
 						age: latestEntry.age,
+						bmi: bmi,
 					});
 				}
 
@@ -384,7 +387,7 @@ const DietPlanner: React.FC = () => {
 								<span>
 									{t("usingLatestHealthData", {
 										age: latestHealthData.age,
-										bmi: latestHealthData.bmi.toFixed(2),
+										bmi: latestHealthData.bmi?.toFixed(2) || "N/A",
 									})}
 								</span>
 							</div>
