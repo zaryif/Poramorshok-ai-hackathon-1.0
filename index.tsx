@@ -26,15 +26,15 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
 	<React.StrictMode>
 		<QueryClientProvider client={queryClient}>
-			<ThemeProvider>
-				<LanguageProvider>
-					<AuthProvider>
+			<AuthProvider>
+				<ThemeProvider>
+					<LanguageProvider>
 						<ReminderProvider>
 							<App />
 						</ReminderProvider>
-					</AuthProvider>
-				</LanguageProvider>
-			</ThemeProvider>
+					</LanguageProvider>
+				</ThemeProvider>
+			</AuthProvider>
 		</QueryClientProvider>
 	</React.StrictMode>
 );

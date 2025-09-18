@@ -28,7 +28,6 @@ const ExercisePlanner: React.FC = () => {
     const planRef = useRef<HTMLDivElement>(null);
     const { language, t } = useLanguage();
     const { theme } = useTheme();
-    const { user } = useAuth();
 
     const goalOptions: { value: DietGoal; labelKey: string }[] = [
         { value: 'weight-loss', labelKey: 'goalWeightLoss' },
