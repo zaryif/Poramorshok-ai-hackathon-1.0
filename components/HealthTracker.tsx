@@ -271,6 +271,7 @@ const HealthTracker: React.FC = () => {
 
 				// Always save to localStorage as backup
 				localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
+
 			} catch (error) {
 				console.error(error);
 				const message =
@@ -346,7 +347,6 @@ const HealthTracker: React.FC = () => {
 		if (history.length > 0) {
 			// Always save to localStorage as backup
 			localStorage.setItem("healthHistory", JSON.stringify(history));
-
 			// For authenticated users, fetch advice from database or generate new
 			if (user) {
 				fetchAdvice(history, language);
