@@ -1,0 +1,148 @@
+Of course! I can certainly help you with that.
+It's great that you're looking to add the "Nearby" feature. Based on the files you've sent, the good news is that this feature is already fully implemented and integrated! I'll provide a detailed guide on how all the pieces connect, so you can easily copy the necessary files and code blocks into your other project.
+Here is a step-by-step breakdown of where to put the files and code for the "Nearby" feature:
+1. The Main Feature Component: components/Nearby.tsx
+What it is: This is the core file for the feature. It contains all the logic for getting the user's location, calling the AI to find hospitals, and displaying the results.
+Action: Create a new file at components/Nearby.tsx and paste the entire content of the Nearby.tsx file you provided.
+2. Type Definitions: types.ts
+What to add: You need to tell the application about the new 'nearby' view and define the data structure for hospitals.
+Action: Open your types.ts file and make these two changes:
+In the View type definition, add 'nearby':
+code
+TypeScript
+export type View = 'chatbot' | 'tracker' | 'diet' | 'exercise' | 'wallet' | 'settings' | 'nearby';
+Add the Hospital interface anywhere in the file:
+code
+TypeScript
+export interface Hospital {
+    name: string;
+    address: string;
+    phone?: string;
+    ambulancePhone?: string;
+    latitude: number;
+    longitude: number;
+}
+3. AI Service Function: services/geminiService.ts
+What to add: A new function, findNearbyHospitals, is needed to communicate with the Gemini API.
+Action: Open services/geminiService.ts and add the hospitalSchema constant and the findNearbyHospitals function. You can place them with the other schema definitions and service functions.
+Add the schema:
+code
+TypeScript
+const hospitalSchema = {
+    type: Type.ARRAY,
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            name: { type: Type.STRING, description: "The full name of the hospital or clinic." },
+            address: { type: Type.STRING, description: "The complete street address of the hospital." },
+            phone: { type: Type.STRING, description: "The main contact phone number for the hospital. Can be null if not found." },
+            ambulancePhone: { type: Type.STRING, description: "A dedicated phone number for ambulance services, if available. Can be null if not found." },
+            latitude: { type: Type.NUMBER, description: "The geographic latitude of the hospital." },
+            longitude: { type: Type.NUMBER, description: "The geographic longitude of the hospital." },
+        },
+        required: ["name", "address", "latitude", "longitude"]
+    }
+};
+Add the function:
+code
+TypeScript
+export const findNearbyHospitals = async (latitude: number, longitude: number, language: 'en' | 'bn'): Promise<Hospital[]> => {
+    const langInstruction = language === 'bn' ? 'Bengali' : 'English';
+    const prompt = `Find up to 10 of the nearest hospitals, clinics, or medical centers to the following coordinates: latitude ${latitude}, longitude ${longitude}. For each location, provide its name, full address, main contact phone number (if available), a specific ambulance phone number (if available and different from the main number), and its precise latitude and longitude. The response must be a JSON array conforming to the schema. All string values in the JSON (name, address) must be in ${langInstruction}.`;
+
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: hospitalSchema,
+            },
+        });
+        const jsonText = response.text.trim();
+        return JSON.parse(jsonText) as Hospital[];
+    } catch (error) {
+        console.error("Error finding nearby hospitals:", error);
+        throw new Error("Failed to find nearby hospitals. Please try again.");
+    }
+};
+4. App Integration: App.tsx
+What to do: You need to render the Nearby.tsx component when the user selects it.
+Action: Open App.tsx and make these two changes:
+Import the Nearby component at the top of the file:
+code
+TypeScript
+import Nearby from './components/Nearby';
+In the renderView function, add a case for 'nearby':
+code
+JavaScript
+const renderView = useCallback(() => {
+  switch (activeView) {
+    // ... other cases
+    case 'nearby':
+      return <Nearby key="nearby" />;
+    // ... default case
+  }
+}, [activeView]);
+5. Navigation UI: components/Header.tsx
+What to do: Add a button to the navigation bar so users can switch to the 'Nearby' view.
+Action: Open components/Header.tsx and add a new object to the navItems array:
+code
+JavaScript
+const navItems: { id: View; labelKey: string; icon: string; }[] = [
+  { id: 'chatbot', labelKey: 'aiAnalyzer', icon: 'chat' },
+  { id: 'tracker', labelKey: 'healthTracker', icon: 'heart' },
+  { id: 'diet', labelKey: 'dietPlanner', icon: 'food' },
+  { id: 'exercise', labelKey: 'exercisePlanner', icon: 'exercise' },
+  { id: 'wallet', labelKey: 'healthWallet', icon: 'wallet'},
+  { id: 'nearby', labelKey: 'nearby', icon: 'hospital' }, // <-- ADD THIS LINE
+];
+6. Text and Translations: contexts/LanguageContext.tsx
+What to do: Add all the user-facing text for the feature in both English and Bengali.
+Action: Open contexts/LanguageContext.tsx and add the following keys to both the en and bn objects inside translations.
+Add to en:
+code
+JavaScript
+nearby: 'Nearby',
+// ...
+nearbyHospitalsTitle: "Nearby Hospitals",
+nearbyHospitalsDescription: "Find emergency medical services near your current location.",
+findNearbyHospitals: "Find Nearby Hospitals",
+findingYourLocation: "Finding your location...",
+fetchingHospitals: "Fetching nearby hospitals...",
+locationPermissionDenied: "Location Permission Denied",
+howToEnableLocation: "To use this feature, please enable location services in your browser settings for this site.",
+unableToFetchLocation: "Unable to retrieve your location. Please ensure location services are enabled and try again.",
+noHospitalsFound: "No hospitals found near your location, or the service is unavailable. Please try again later.",
+callHospital: "Call Hospital",
+callAmbulance: "Call Ambulance",
+getDirections: "Get Directions",
+Add to bn:
+code
+JavaScript
+nearby: 'কাছাকাছি',
+// ...
+nearbyHospitalsTitle: "কাছাকাছি হাসপাতাল",
+nearbyHospitalsDescription: "আপনার বর্তমান অবস্থানের কাছাকাছি জরুরি চিকিৎসা পরিষেবা খুঁজুন।",
+findNearbyHospitals: "কাছাকাছি হাসপাতাল খুঁজুন",
+findingYourLocation: "আপনার অবস্থান খোঁজা হচ্ছে...",
+fetchingHospitals: "কাছাকাছি হাসপাতাল আনা হচ্ছে...",
+locationPermissionDenied: "অবস্থানের অনুমতি দেওয়া হয়নি",
+howToEnableLocation: "এই বৈশিষ্ট্যটি ব্যবহার করতে, দয়া করে আপনার ব্রাউজার সেটিংসে এই সাইটের জন্য অবস্থান পরিষেবা সক্রিয় করুন।",
+unableToFetchLocation: "আপনার অবস্থান পুনরুদ্ধার করা সম্ভব হয়নি। দয়া করে অবস্থান পরিষেবা সক্রিয় আছে কিনা তা নিশ্চিত করে আবার চেষ্টা করুন।",
+noHospitalsFound: "আপনার অবস্থানের কাছাকাছি কোনো হাসপাতাল পাওয়া যায়নি, অথবা পরিষেবাটি উপলব্ধ নয়। অনুগ্রহ করে পরে আবার চেষ্টা করুন।",
+callHospital: "হাসপাতালে কল করুন",
+callAmbulance: "অ্যাম্বুলেন্সে কল করুন",
+getDirections: "দিকনির্দেশ পান",
+7. Required Icons: components/Icon.tsx
+What to add: The feature needs icons for hospital, phone, and info-circle.
+Action: Open components/Icon.tsx and ensure these icons are present in the icons object.
+code
+JavaScript
+const icons: { [key: string]: React.ReactElement<any> } = {
+    // ... other icons
+    'info-circle': <svg ... />,
+    hospital: <svg ... />,
+    phone: <svg ... />,
+};
+By following these steps and copying the code from the files you already have, you will successfully integrate the "Nearby Hospitals" feature into your other project. Let me know if you have any more questions
