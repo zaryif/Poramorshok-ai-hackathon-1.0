@@ -348,7 +348,6 @@ const HealthTracker: React.FC = () => {
 			if (!user) {
 				localStorage.setItem("healthHistory", JSON.stringify(history));
 			}
-
 			// For authenticated users, fetch advice from database or generate new
 			if (user) {
 				fetchAdvice(history, language);

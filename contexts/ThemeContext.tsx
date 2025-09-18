@@ -8,7 +8,7 @@ import React, {
 	useCallback,
 } from "react";
 import { userService } from "../src/services/database";
-
+        
 type Theme = "light" | "dark";
 
 interface ThemeContextType {
@@ -16,6 +16,7 @@ interface ThemeContextType {
 	toggleTheme: () => void;
 	updateThemePreference: (userId: string, theme: Theme) => Promise<void>;
 	loadUserThemePreference: (userId: string) => Promise<void>;
+
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);

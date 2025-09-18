@@ -122,12 +122,12 @@ const Chatbot: React.FC = () => {
 		}
 	}, [user]);
 
-	// Save message to database
+	// Save message to database (database-first approach)
 	const saveMessage = useCallback(
 		async (newMessage: ChatMessage) => {
 			if (!user) {
-				// No authenticated user, just update local state
-				// Chat history won't be persisted
+				// For non-authenticated users, just update local state
+				// Chat history won't be persisted across sessions
 				setMessages((prev) => [...prev, newMessage]);
 				return;
 			}
@@ -168,8 +168,9 @@ const Chatbot: React.FC = () => {
 				setMessages((prev) => [...prev, newMessage]);
 			} catch (error) {
 				console.error("Failed to save message to database:", error);
-				// Still update local state for this session
-				setMessages((prev) => [...prev, newMessage]);
+				// For authenticated users, don't save locally if database fails
+				// This ensures consistency and encourages proper error handling
+				throw error;
 			}
 		},
 		[user, currentSessionId]
@@ -196,7 +197,7 @@ const Chatbot: React.FC = () => {
 		loadChatHistory();
 	}, [loadChatHistory]);
 
-	// Legacy localStorage sync (for backward compatibility)
+	// Only sync to localStorage for non-authenticated users
 	useEffect(() => {
 		if (!user && messages.length > 0) {
 			try {
@@ -270,7 +271,6 @@ const Chatbot: React.FC = () => {
 			if (!input.trim() || isLoading) return;
 
 			const userMessage: ChatMessage = { sender: "user", text: input };
-			setMessages((prev) => [...prev, userMessage]);
 			setInput("");
 			setIsLoading(true);
 			setError(null);
@@ -285,13 +285,9 @@ const Chatbot: React.FC = () => {
 					text: t("aiAnalysisDisclaimer"),
 					analysis,
 				};
-				setMessages((prev) => [...prev, aiMessage]);
 
-				// Save AI message to database/localStorage (use 'ai' for database)
-				await saveMessage({
-					...aiMessage,
-					sender: "ai",
-				});
+				// Save AI message to database/localStorage
+				await saveMessage(aiMessage);
 			} catch (err) {
 				const message = err instanceof Error ? err.message : t("unknownError");
 				setError(message);
@@ -299,7 +295,6 @@ const Chatbot: React.FC = () => {
 					sender: "ai",
 					text: `${t("aiProcessError")} ${message}`,
 				};
-				setMessages((prev) => [...prev, errorMessage]);
 
 				// Save error message to database/localStorage
 				await saveMessage(errorMessage);
