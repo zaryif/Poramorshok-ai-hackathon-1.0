@@ -69,115 +69,113 @@ const Chatbot: React.FC = () => {
 	const { language, t } = useLanguage();
 	const { theme } = useTheme();
 
-	// Load chat history from database or localStorage
+	// Load chat history from database
 	const loadChatHistory = useCallback(async () => {
-		if (user) {
-			// User is authenticated, try to load from database
-			try {
-				setLoadingFromDatabase(true);
-				const sessions = await chatService.getSessions(user.id);
-
-				if (sessions && sessions.length > 0) {
-					// Get the most recent session
-					const latestSession = sessions[0];
-					setCurrentSessionId(latestSession.id);
-
-					// Convert database messages to ChatMessage format
-					const dbMessages: ChatMessage[] =
-						latestSession.chat_messages?.map((msg: any) => ({
-							sender:
-								msg.sender === "assistant"
-									? "ai"
-									: (msg.sender as "user" | "ai"),
-							text: msg.message_text,
-							analysis: msg.symptom_analyses?.[0]
-								? {
-										symptoms: msg.symptom_analyses[0].symptoms || [],
-										causes: msg.symptom_analyses[0].causes || [],
-										treatments: msg.symptom_analyses[0].treatments || [],
-										medications: msg.symptom_analyses[0].medications || [],
-										mentalHealthSupport:
-											msg.symptom_analyses[0].mental_health_support || [],
-								  }
-								: undefined,
-						})) || [];
-
-					setMessages(dbMessages);
-					return;
-				}
-			} catch (error) {
-				console.error("Failed to load chat history from database:", error);
-				// Fall back to localStorage
-			} finally {
-				setLoadingFromDatabase(false);
-			}
+		if (!user) {
+			// No authenticated user, start with empty chat
+			setMessages([]);
+			setCurrentSessionId(null);
+			return;
 		}
 
-		// Load from localStorage (fallback or non-authenticated user)
+		// User is authenticated, load from database
 		try {
-			const storedMessages = localStorage.getItem("chatHistory");
-			const localMessages = storedMessages ? JSON.parse(storedMessages) : [];
-			setMessages(localMessages);
+			setLoadingFromDatabase(true);
+			const sessions = await chatService.getSessions(user.id);
+
+			if (sessions && sessions.length > 0) {
+				// Get the most recent session
+				const latestSession = sessions[0];
+				setCurrentSessionId(latestSession.id);
+
+				// Convert database messages to ChatMessage format
+				const dbMessages: ChatMessage[] =
+					latestSession.chat_messages?.map((msg: any) => ({
+						sender:
+							msg.sender === "assistant" ? "ai" : (msg.sender as "user" | "ai"),
+						text: msg.message_text,
+						analysis: msg.symptom_analyses?.[0]
+							? {
+									symptoms: msg.symptom_analyses[0].symptoms || [],
+									causes: msg.symptom_analyses[0].causes || [],
+									treatments: msg.symptom_analyses[0].treatments || [],
+									medications: msg.symptom_analyses[0].medications || [],
+									mentalHealthSupport:
+										msg.symptom_analyses[0].mental_health_support || [],
+							  }
+							: undefined,
+					})) || [];
+
+				setMessages(dbMessages);
+			} else {
+				// No existing sessions, start fresh
+				setMessages([]);
+				setCurrentSessionId(null);
+			}
 		} catch (error) {
-			console.error("Failed to parse chat history from localStorage", error);
-			localStorage.removeItem("chatHistory");
+			console.error("Failed to load chat history from database:", error);
+			// Start with empty chat on database error
 			setMessages([]);
+			setCurrentSessionId(null);
+		} finally {
+			setLoadingFromDatabase(false);
 		}
 	}, [user]);
 
-	// Save message to database and/or localStorage
+	// Save message to database
 	const saveMessage = useCallback(
 		async (newMessage: ChatMessage) => {
-			if (user) {
-				try {
-					// Ensure we have a session
-					let sessionId = currentSessionId;
-					if (!sessionId) {
-						const session = await chatService.createSession(
-							user.id,
-							`Chat ${new Date().toLocaleDateString()}`
-						);
-						sessionId = session.id;
-						setCurrentSessionId(sessionId);
-					}
-
-					// Save message to database
-					// Ensure sender is only 'user' or 'ai' for DB
-					const dbSender = newMessage.sender === "user" ? "user" : "ai";
-					const dbMessage = await chatService.addMessage(sessionId, {
-						sender: dbSender,
-						message_text: newMessage.text,
-					});
-
-					// Save symptom analysis if present
-					if (newMessage.analysis && dbMessage) {
-						await chatService.addSymptomAnalysis(dbMessage.id, {
-							symptoms: newMessage.analysis.symptoms || [],
-							causes: newMessage.analysis.causes || [],
-							treatments: newMessage.analysis.treatments || [],
-							medications: newMessage.analysis.medications || [],
-							mental_health_support:
-								newMessage.analysis.mentalHealthSupport || [],
-						});
-					}
-				} catch (error) {
-					console.error("Failed to save message to database:", error);
-					// Continue to save to localStorage as fallback
-				}
+			if (!user) {
+				// No authenticated user, just update local state
+				// Chat history won't be persisted
+				setMessages((prev) => [...prev, newMessage]);
+				return;
 			}
 
-			// Always save to localStorage as well (backup/fallback)
 			try {
-				const updatedMessages = [...messages, newMessage];
-				localStorage.setItem("chatHistory", JSON.stringify(updatedMessages));
-			} catch (err) {
-				console.error("Failed to save chat history to localStorage", err);
+				// Ensure we have a session
+				let sessionId = currentSessionId;
+				if (!sessionId) {
+					const session = await chatService.createSession(
+						user.id,
+						`Chat ${new Date().toLocaleDateString()}`
+					);
+					sessionId = session.id;
+					setCurrentSessionId(sessionId);
+				}
+
+				// Save message to database
+				// Ensure sender is only 'user' or 'ai' for DB
+				const dbSender = newMessage.sender === "user" ? "user" : "ai";
+				const dbMessage = await chatService.addMessage(sessionId, {
+					sender: dbSender,
+					message_text: newMessage.text,
+				});
+
+				// Save symptom analysis if present
+				if (newMessage.analysis && dbMessage) {
+					await chatService.addSymptomAnalysis(dbMessage.id, {
+						symptoms: newMessage.analysis.symptoms || [],
+						causes: newMessage.analysis.causes || [],
+						treatments: newMessage.analysis.treatments || [],
+						medications: newMessage.analysis.medications || [],
+						mental_health_support:
+							newMessage.analysis.mentalHealthSupport || [],
+					});
+				}
+
+				// Update local state after successful database save
+				setMessages((prev) => [...prev, newMessage]);
+			} catch (error) {
+				console.error("Failed to save message to database:", error);
+				// Still update local state for this session
+				setMessages((prev) => [...prev, newMessage]);
 			}
 		},
-		[user, currentSessionId, messages]
+		[user, currentSessionId]
 	);
 
-	// Clear chat history from both database and localStorage
+	// Clear chat history from database
 	const clearChatHistory = useCallback(async () => {
 		if (user && currentSessionId) {
 			try {
@@ -188,9 +186,6 @@ const Chatbot: React.FC = () => {
 				console.error("Failed to clear chat from database:", error);
 			}
 		}
-
-		// Clear localStorage
-		localStorage.removeItem("chatHistory");
 
 		// Clear local state
 		setMessages([]);
@@ -375,6 +370,24 @@ const Chatbot: React.FC = () => {
 							<p className="mt-2">
 								{t("loadingChatHistory") || "Loading chat history..."}
 							</p>
+						</div>
+					)}
+					{!user && !loadingFromDatabase && (
+						<div className="mx-4 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg mb-4">
+							<div className="flex items-start gap-3">
+								<div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+									<Icon name="user" className="h-5 w-5" />
+								</div>
+								<div>
+									<p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+										{t("chatHistoryNotSaved") || "Chat history won't be saved"}
+									</p>
+									<p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+										{t("loginToSaveChat") ||
+											"Log in to save your conversations and access them across devices."}
+									</p>
+								</div>
+							</div>
 						</div>
 					)}
 					{!loadingFromDatabase && messages.length === 0 && (

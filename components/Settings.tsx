@@ -78,7 +78,7 @@ const DataManagementAction: React.FC<{
 const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 	onNavigateToLogin,
 }) => {
-	const { theme, toggleTheme } = useTheme();
+	const { theme, toggleTheme, updateThemePreference } = useTheme();
 	const { language, toggleLanguage, t, updateLanguagePreference } =
 		useLanguage();
 	const { user, session, signOut } = useAuth();
@@ -98,6 +98,15 @@ const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 		if (user?.id) {
 			const newLang = language === "en" ? "bn" : "en";
 			await updateLanguagePreference(user.id, newLang);
+		}
+	};
+
+	const handleThemeToggle = async () => {
+		toggleTheme();
+		// Update theme preference in database if user is logged in
+		if (user?.id) {
+			const newTheme = theme === "light" ? "dark" : "light";
+			await updateThemePreference(user.id, newTheme);
 		}
 	};
 
@@ -316,7 +325,7 @@ const Settings: React.FC<{ onNavigateToLogin?: () => void }> = ({
 							{t("theme")}
 						</label>
 						<button
-							onClick={toggleTheme}
+							onClick={handleThemeToggle}
 							className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors duration-200 bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300"
 						>
 							<Icon

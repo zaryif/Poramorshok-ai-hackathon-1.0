@@ -16,6 +16,7 @@ import Settings from "./components/Settings";
 import LoginSignup from "./components/LoginSignup";
 import FunFact from "./components/FunFact";
 import useScroll from "./hooks/useScroll";
+import { useUserPreferences } from "./hooks/useUserPreferences";
 import { useReminders } from "./contexts/ReminderContext";
 import { useAuth } from "./src/contexts/AuthContext";
 import Icon from "./components/Icon";
@@ -66,6 +67,9 @@ const App: React.FC = () => {
 	const [headerHeight, setHeaderHeight] = useState(80); // Default header height as fallback
 	const [isTransitioning, setIsTransitioning] = useState(false);
 	const { isScrolled, scrollDirection } = useScroll(scrollRef);
+
+	// Load user preferences when user logs in
+	useUserPreferences();
 
 	// Handle authentication state changes
 	useEffect(() => {
