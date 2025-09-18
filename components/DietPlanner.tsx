@@ -80,6 +80,7 @@ const DietPlanner: React.FC = () => {
 						weight: latestEntry.weight_kg,
 						height: latestEntry.height_cm,
 						age: latestEntry.age,
+						bmi: latestEntry.bmi,
 					});
 				}
 
@@ -384,7 +385,7 @@ const DietPlanner: React.FC = () => {
 								<span>
 									{t("usingLatestHealthData", {
 										age: latestHealthData.age,
-										bmi: latestHealthData.bmi.toFixed(2),
+										bmi: latestHealthData.bmi?.toFixed(2) || 'N/A',
 									})}
 								</span>
 							</div>
