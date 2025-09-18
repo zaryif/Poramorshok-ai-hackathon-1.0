@@ -23,7 +23,11 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "autoprefixer": "^10.4.21",
     "supabase": "^2.40.7",
+    "tailwindcss": "^4.1.13",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

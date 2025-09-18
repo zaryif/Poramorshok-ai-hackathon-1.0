@@ -1,6 +1,8 @@
 import React, { createContext, useState, useEffect, ReactNode, useContext, useRef, useCallback, useMemo } from 'react';
 import { InAppAlertInfo, Prescription } from '../types';
 import { useLanguage } from '../hooks/useLanguage';
+import { useAuth } from '../src/contexts/AuthContext';
+import { prescriptionsService } from '../src/services/database';
 import Icon from '../components/Icon';
 
 
@@ -17,6 +19,7 @@ interface ReminderContextType {
 const ReminderContext = createContext<ReminderContextType | undefined>(undefined);
 
 export const ReminderProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const { user } = useAuth();
     const [permissionStatus, setPermissionStatus] = useState<PermissionStatus>('default');
     const [activeInAppAlert, setActiveInAppAlert] = useState<InAppAlertInfo | null>(null);
     const timeoutIds = useRef<NodeJS.Timeout[]>([]);
@@ -56,7 +59,7 @@ export const ReminderProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, [permissionStatus, t]);
 
 
-    const scheduleReminders = useCallback(() => {
+    const scheduleReminders = useCallback(async () => {
         // Clear existing timeouts
         timeoutIds.current.forEach(clearTimeout);
         timeoutIds.current = [];
@@ -64,8 +67,30 @@ export const ReminderProvider: React.FC<{ children: ReactNode }> = ({ children }
         if (permissionStatus !== 'granted') return;
 
         try {
-            const storedPrescriptions = localStorage.getItem('prescriptions');
-            const prescriptions: Prescription[] = storedPrescriptions ? JSON.parse(storedPrescriptions) : [];
+            let prescriptions: Prescription[] = [];
+            
+            if (user) {
+                // Load from database for authenticated users
+                const dbPrescriptions = await prescriptionsService.getPrescriptions(user.id);
+                prescriptions = dbPrescriptions.map(prescription => ({
+                    id: prescription.id,
+                    doctor: prescription.prescribing_doctor,
+                    date: prescription.issue_date,
+                    drugs: prescription.prescription_drugs?.map(drug => ({
+                        id: drug.id,
+                        name: drug.drug_name,
+                        dosage: drug.dosage,
+                        reminderEnabled: drug.reminder_enabled || false,
+                        reminderTimes: drug.drug_reminder_times?.map(rt => rt.reminder_time) || [],
+                    })) || [],
+                    fileData: prescription.file_data,
+                    fileType: prescription.file_type,
+                }));
+            } else {
+                // Fallback to localStorage for non-authenticated users
+                const storedPrescriptions = localStorage.getItem('prescriptions');
+                prescriptions = storedPrescriptions ? JSON.parse(storedPrescriptions) : [];
+            }
 
             const now = new Date();
             
@@ -102,10 +127,20 @@ export const ReminderProvider: React.FC<{ children: ReactNode }> = ({ children }
                 });
             });
         } catch (error) {
-            console.error("Failed to parse prescriptions for reminders", error);
+            console.error("Failed to load prescriptions for reminders", error);
+            
+            // Fallback to localStorage if database fails
+            if (user) {
+                try {
+                    const storedPrescriptions = localStorage.getItem('prescriptions');
+                    const prescriptions: Prescription[] = storedPrescriptions ? JSON.parse(storedPrescriptions) : [];
+                    // ... (continue with the same logic as above for localStorage)
+                } catch (localError) {
+                    console.error("Failed to parse prescriptions from localStorage", localError);
+                }
+            }
         }
-
-    }, [permissionStatus, triggerNotification]);
+    }, [permissionStatus, triggerNotification, user]);
     
     const dismissInAppAlert = useCallback(() => {
         setActiveInAppAlert(null);
