@@ -249,6 +249,7 @@ const HealthTracker: React.FC = () => {
 
 				// Save to localStorage as backup (for non-authenticated users or as fallback)
 				localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
+
 			} catch (error) {
 				console.error(error);
 				const message =
@@ -320,9 +321,10 @@ const HealthTracker: React.FC = () => {
 	}, [loadHealthData]);
 
 	useEffect(() => {
-		if (history.length > 0) {
-			// Always save to localStorage as backup
-			localStorage.setItem("healthHistory", JSON.stringify(history));
+		const loadHealthAdvice = async () => {
+			if (history.length > 0) {
+				// Always save to localStorage as backup
+				localStorage.setItem("healthHistory", JSON.stringify(history));
 
 			if (user) {
 				// For authenticated users, always fetch advice to get latest from database
@@ -349,6 +351,7 @@ const HealthTracker: React.FC = () => {
 			localStorage.removeItem("healthAdvice_bn");
 			setAdvice(null);
 		}
+
 	}, [history, language, fetchAdvice, user]);
 
 	useEffect(() => {

@@ -197,6 +197,17 @@ const Chatbot: React.FC = () => {
 		loadChatHistory();
 	}, [loadChatHistory]);
 
+	// Only sync to localStorage for non-authenticated users
+	useEffect(() => {
+		if (!user && messages.length > 0) {
+			try {
+				localStorage.setItem("chatHistory", JSON.stringify(messages));
+			} catch (err) {
+				console.error("Failed to save chat history to localStorage", err);
+			}
+		}
+	}, [messages, user]);
+
 	const scrollToBottom = () => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 	};
@@ -260,7 +271,6 @@ const Chatbot: React.FC = () => {
 			if (!input.trim() || isLoading) return;
 
 			const userMessage: ChatMessage = { sender: "user", text: input };
-			setMessages((prev) => [...prev, userMessage]);
 			setInput("");
 			setIsLoading(true);
 			setError(null);
@@ -275,13 +285,9 @@ const Chatbot: React.FC = () => {
 					text: t("aiAnalysisDisclaimer"),
 					analysis,
 				};
-				setMessages((prev) => [...prev, aiMessage]);
 
-				// Save AI message to database/localStorage (use 'ai' for database)
-				await saveMessage({
-					...aiMessage,
-					sender: "ai",
-				});
+				// Save AI message to database/localStorage
+				await saveMessage(aiMessage);
 			} catch (err) {
 				const message = err instanceof Error ? err.message : t("unknownError");
 				setError(message);
@@ -289,7 +295,6 @@ const Chatbot: React.FC = () => {
 					sender: "ai",
 					text: `${t("aiProcessError")} ${message}`,
 				};
-				setMessages((prev) => [...prev, errorMessage]);
 
 				// Save error message to database/localStorage
 				await saveMessage(errorMessage);

@@ -13,6 +13,7 @@ import { useLanguage } from '../hooks/useLanguage';
 import { useTheme } from '../contexts/ThemeContext';
 
 const ExercisePlanner: React.FC = () => {
+    const { user } = useAuth();
     const [goal, setGoal] = useState<DietGoal>('maintain-weight');
     const [fitnessLevel, setFitnessLevel] = useState<FitnessLevel>('beginner');
     const [location, setLocation] = useState<ExerciseLocation>('home');
@@ -71,7 +72,6 @@ const ExercisePlanner: React.FC = () => {
                 }
                 return;
             }
-
             try {
                 // Load latest health data from database
                 const healthEntries = await healthService.getEntries(user.id);
@@ -175,6 +175,7 @@ const ExercisePlanner: React.FC = () => {
             // Save to database if user is logged in
             if (user) {
                 await savePlanToDatabase(newPlan);
+
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : t('unknownError');
@@ -183,6 +184,7 @@ const ExercisePlanner: React.FC = () => {
             setIsLoading(false);
         }
     }, [goal, latestHealthData, fitnessLevel, location, timePerDay, language, t, user, savePlanToDatabase]);
+
     
     const exerciseTypeColors: {[key: string]: string} = {
         'Cardio': 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
