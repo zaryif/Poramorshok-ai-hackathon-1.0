@@ -31,6 +31,7 @@ const fileToBase64 = (
 			});
 		reader.onerror = (error) => reject(error);
 	});
+
 };
 
 type ModalType = "record" | "prescription" | "insurance" | null;
