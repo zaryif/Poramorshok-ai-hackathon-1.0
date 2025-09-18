@@ -76,12 +76,17 @@ const ExercisePlanner: React.FC = () => {
                 const healthEntries = await healthService.getEntries(user.id);
                 if (healthEntries && healthEntries.length > 0) {
                     const latestEntry = healthEntries[0]; // Assuming they're ordered by date desc
+                    // Calculate BMI
+                    const heightInMeters = latestEntry.height_cm / 100;
+                    const bmi = latestEntry.weight_kg / (heightInMeters * heightInMeters);
+                    
                     setLatestHealthData({
                         id: latestEntry.id,
                         date: latestEntry.date,
                         weight: latestEntry.weight_kg,
                         height: latestEntry.height_cm,
                         age: latestEntry.age,
+                        bmi: bmi,
                     });
                 }
 
@@ -333,7 +338,7 @@ const ExercisePlanner: React.FC = () => {
                         {latestHealthData?.age ? (
                             <div className="p-3 bg-blue-50 dark:bg-blue-900/50 text-sm text-blue-800 dark:text-blue-300 flex items-start gap-2 rounded-md">
                                 <Icon name="info" className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                                <span>{t('usingLatestHealthData', { age: latestHealthData.age, bmi: latestHealthData.bmi.toFixed(2) })}</span>
+                                <span>{t('usingLatestHealthData', { age: latestHealthData.age, bmi: latestHealthData.bmi?.toFixed(2) || "N/A" })}</span>
                             </div>
                         ) : (
                              <div className="p-3 bg-yellow-50 dark:bg-yellow-900/50 text-sm text-yellow-800 dark:text-yellow-300 flex items-start gap-2 rounded-md">
