@@ -208,29 +208,9 @@ const HealthTracker: React.FC = () => {
 			setIsLoadingAdvice(true);
 			setAdviceError(null);
 			try {
-				// Check if user is authenticated and try to load from database first
-				if (user) {
-					try {
-						const dbAdvice = await healthAdviceService.getAdvice(user.id, lang);
-						if (dbAdvice) {
-							const parsedAdvice: HealthAdvice = {
-								dietaryAdvice: dbAdvice.dietary_advice,
-								exerciseRecommendations: dbAdvice.exercise_recommendations,
-								lifestyleSuggestions: dbAdvice.lifestyle_suggestions,
-							};
-							setAdvice(parsedAdvice);
-							setIsLoadingAdvice(false);
-							return;
-						}
-					} catch (dbError) {
-						console.log("No existing advice in database, generating new advice");
-					}
-				}
-
-				// Generate new advice using AI
 				const newAdvice = await getHealthAdvice(currentHistory, lang);
 				setAdvice(newAdvice);
-
+				
 				// Save to database if user is authenticated
 				if (user) {
 					try {
@@ -241,15 +221,16 @@ const HealthTracker: React.FC = () => {
 							exercise_recommendations: newAdvice.exerciseRecommendations,
 							lifestyle_suggestions: newAdvice.lifestyleSuggestions,
 						});
-						console.log("Health advice saved to database");
-					} catch (dbError) {
-						console.error("Failed to save advice to database:", dbError);
+						console.log('Health advice saved to database successfully');
+					} catch (saveError) {
+						console.error('Failed to save health advice to database:', saveError);
+						// Still save to localStorage as fallback
+						localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
 					}
+				} else {
+					// Save to localStorage for non-authenticated users
+					localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
 				}
-
-				// Save to localStorage as backup (for non-authenticated users or as fallback)
-				localStorage.setItem(`healthAdvice_${lang}`, JSON.stringify(newAdvice));
-
 			} catch (error) {
 				console.error(error);
 				const message =
@@ -326,11 +307,25 @@ const HealthTracker: React.FC = () => {
 				// Always save to localStorage as backup
 				localStorage.setItem("healthHistory", JSON.stringify(history));
 
-			if (user) {
-				// For authenticated users, always fetch advice to get latest from database
-				fetchAdvice(history, language);
-			} else {
-				// For non-authenticated users, try localStorage first
+				// Load advice from database or localStorage
+				if (user) {
+					try {
+						const dbAdvice = await healthAdviceService.getAdvice(user.id, language);
+						if (dbAdvice) {
+							const formattedAdvice: HealthAdvice = {
+								dietaryAdvice: dbAdvice.dietary_advice,
+								exerciseRecommendations: dbAdvice.exercise_recommendations,
+								lifestyleSuggestions: dbAdvice.lifestyle_suggestions,
+							};
+							setAdvice(formattedAdvice);
+							return;
+						}
+					} catch (error) {
+						console.error("Failed to load health advice from database:", error);
+					}
+				}
+
+				// Fallback to localStorage or generate new advice
 				try {
 					const storedAdvice = localStorage.getItem(`healthAdvice_${language}`);
 					if (storedAdvice) {
@@ -343,15 +338,16 @@ const HealthTracker: React.FC = () => {
 					localStorage.removeItem(`healthAdvice_${language}`);
 					fetchAdvice(history, language);
 				}
+			} else {
+				// Clear localStorage when no history
+				localStorage.removeItem("healthHistory");
+				localStorage.removeItem("healthAdvice_en");
+				localStorage.removeItem("healthAdvice_bn");
+				setAdvice(null);
 			}
-		} else {
-			// Clear localStorage when no history
-			localStorage.removeItem("healthHistory");
-			localStorage.removeItem("healthAdvice_en");
-			localStorage.removeItem("healthAdvice_bn");
-			setAdvice(null);
-		}
+		};
 
+		loadHealthAdvice();
 	}, [history, language, fetchAdvice, user]);
 
 	useEffect(() => {

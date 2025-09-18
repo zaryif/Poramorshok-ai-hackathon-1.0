@@ -4,8 +4,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import * as htmlToImage from 'html-to-image';
 import { DietGoal, ExercisePlan, ExercisePlanRequest, HealthEntry, FitnessLevel, ExerciseLocation } from '../types';
 import { generateExercisePlan } from '../services/geminiService';
-import { exerciseService, healthService } from '../src/services/database';
 import { useAuth } from '../src/contexts/AuthContext';
+import { exerciseService, healthService } from '../src/services/database';
 import Icon from './Icon';
 import Loader from './Loader';
 import Disclaimer from './Disclaimer';
@@ -22,13 +22,11 @@ const ExercisePlanner: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [latestHealthData, setLatestHealthData] = useState<HealthEntry | null>(null);
-    const [savedPlans, setSavedPlans] = useState<any[]>([]);
-    const [loadingPlans, setLoadingPlans] = useState(false);
-    const [saving, setSaving] = useState(false);
+    const [savedPlans, setSavedPlans] = useState<ExercisePlan[]>([]);
+    const [showPlanHistory, setShowPlanHistory] = useState(false);
     const planRef = useRef<HTMLDivElement>(null);
     const { language, t } = useLanguage();
     const { theme } = useTheme();
-    const { user } = useAuth();
 
     const goalOptions: { value: DietGoal; labelKey: string }[] = [
         { value: 'weight-loss', labelKey: 'goalWeightLoss' },
@@ -54,99 +52,76 @@ const ExercisePlanner: React.FC = () => {
         { value: '60', labelKey: 'time60min' },
     ];
 
-    // Load health data and saved exercise plans
+    // Load health data and saved plans
     useEffect(() => {
-        const loadData = async () => {
-            if (!user) {
-                // For non-authenticated users, try localStorage fallback for health data
-                try {
-                    const storedHistory = localStorage.getItem('healthHistory');
-                    if (storedHistory) {
-                        const history: HealthEntry[] = JSON.parse(storedHistory);
-                        if (history.length > 0) {
-                            setLatestHealthData(history[history.length - 1]);
-                        }
-                    }
-                } catch (error) {
-                    console.error("Failed to parse health history for exercise planner", error);
-                }
-                return;
-            }
-            try {
-                // Load latest health data from database
-                const healthEntries = await healthService.getEntries(user.id);
-                if (healthEntries && healthEntries.length > 0) {
-                    const latestEntry = healthEntries[0]; // Assuming they're ordered by date desc
-                    setLatestHealthData({
-                        id: latestEntry.id,
-                        date: latestEntry.date,
-                        weight: latestEntry.weight_kg,
-                        height: latestEntry.height_cm,
-                        age: latestEntry.age,
-                    });
-                }
-
-                // Load saved exercise plans
-                setLoadingPlans(true);
-                const plans = await exerciseService.getPlans(user.id);
-                setSavedPlans(plans || []);
-            } catch (error) {
-                console.error("Failed to load data from database:", error);
-            } finally {
-                setLoadingPlans(false);
-            }
-        };
-
-        loadData();
+        loadHealthData();
+        loadSavedPlans();
     }, [user]);
 
-    const savePlanToDatabase = useCallback(
-        async (exercisePlan: ExercisePlan) => {
-            if (!user || !exercisePlan) return;
-
+    const loadHealthData = useCallback(async () => {
+        if (user) {
+            // Load from database for authenticated users
             try {
-                setSaving(true);
-
-                // Prepare plan data for database
-                const planData = {
-                    user_id: user.id,
-                    goal: goal,
-                    fitness_level: fitnessLevel,
-                    location: location,
-                    time_per_day: timePerDay,
-                    plan_name: `${goal.replace('-', ' ')} plan for ${fitnessLevel}`,
-                };
-
-                // Prepare days data for database
-                const daysData = exercisePlan.days.map((day, index) => ({
-                    day_name: day.day,
-                    details: day.details || '',
-                    day_order: index + 1,
-                    exercises: day.exercises.map((exercise, exerciseIndex) => ({
-                        exercise_name: exercise.exercise,
-                        description: exercise.description || '',
-                        duration: exercise.duration || '',
-                        exercise_type: exercise.type || 'General',
-                        exercise_order: exerciseIndex + 1,
-                    })),
-                }));
-
-                // Save to database
-                await exerciseService.addPlan(planData, daysData);
-
-                // Reload saved plans
-                const updatedPlans = await exerciseService.getPlans(user.id);
-                setSavedPlans(updatedPlans || []);
-
-                console.log("Exercise plan saved successfully");
+                const dbEntries = await healthService.getEntries(user.id);
+                if (dbEntries.length > 0) {
+                    const latestEntry = dbEntries[0]; // Already ordered by date desc
+                    const formattedEntry: HealthEntry = {
+                        date: latestEntry.date,
+                        age: latestEntry.age,
+                        height: latestEntry.height_cm,
+                        weight: latestEntry.weight_kg,
+                        bmi: latestEntry.bmi,
+                    };
+                    setLatestHealthData(formattedEntry);
+                }
             } catch (error) {
-                console.error("Failed to save exercise plan:", error);
-            } finally {
-                setSaving(false);
+                console.error("Failed to load health data from database:", error);
+                // Fallback to localStorage
+                loadHealthDataFromLocalStorage();
             }
-        },
-        [user, goal, fitnessLevel, location, timePerDay]
-    );
+        } else {
+            // Load from localStorage for non-authenticated users
+            loadHealthDataFromLocalStorage();
+        }
+    }, [user]);
+
+    const loadHealthDataFromLocalStorage = () => {
+        try {
+            const storedHistory = localStorage.getItem('healthHistory');
+            if (storedHistory) {
+                const history: HealthEntry[] = JSON.parse(storedHistory);
+                if (history.length > 0) {
+                    setLatestHealthData(history[history.length - 1]);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to parse health history for exercise planner", error);
+        }
+    };
+
+    const loadSavedPlans = useCallback(async () => {
+        if (user) {
+            try {
+                const dbPlans = await exerciseService.getPlans(user.id);
+                const formattedPlans: ExercisePlan[] = dbPlans.map(dbPlan => ({
+                    summary: dbPlan.summary,
+                    plan: dbPlan.exercise_plan_days?.map(day => ({
+                        day: day.day_name,
+                        details: day.details || '',
+                        exercises: day.exercise_plan_exercises?.map(exercise => ({
+                            name: exercise.exercise_name,
+                            description: exercise.description || '',
+                            duration: exercise.duration || '',
+                            type: exercise.exercise_type || 'cardio',
+                        })) || [],
+                    })) || [],
+                }));
+                setSavedPlans(formattedPlans);
+            } catch (error) {
+                console.error("Failed to load saved exercise plans:", error);
+            }
+        }
+    }, [user]);
 
     const handleGeneratePlan = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
@@ -172,10 +147,39 @@ const ExercisePlanner: React.FC = () => {
             const newPlan = await generateExercisePlan(request, language);
             setPlan(newPlan);
 
-            // Save to database if user is logged in
+            // Save to database if user is authenticated
             if (user) {
-                await savePlanToDatabase(newPlan);
+                try {
+                    const daysData = newPlan.plan.map((day, index) => ({
+                        day_name: day.day,
+                        details: day.details,
+                        day_order: index + 1,
+                        exercises: day.exercises.map((exercise, exerciseIndex) => ({
+                            exercise_name: exercise.name,
+                            description: exercise.description,
+                            duration: exercise.duration,
+                            exercise_type: exercise.type,
+                            exercise_order: exerciseIndex + 1,
+                        })),
+                    }));
 
+                    await exerciseService.addPlan({
+                        user_id: user.id,
+                        goal: goal,
+                        fitness_level: fitnessLevel,
+                        location: location,
+                        time_per_day: `${timePerDay} minutes`,
+                        summary: newPlan.summary,
+                        language: language,
+                    }, daysData);
+
+                    // Reload saved plans to include the new one
+                    await loadSavedPlans();
+                    console.log('Exercise plan saved to database successfully');
+                } catch (saveError) {
+                    console.error('Failed to save exercise plan to database:', saveError);
+                    setError('Plan generated successfully, but failed to save to database for future access.');
+                }
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : t('unknownError');
@@ -183,8 +187,7 @@ const ExercisePlanner: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [goal, latestHealthData, fitnessLevel, location, timePerDay, language, t, user, savePlanToDatabase]);
-
+    }, [goal, latestHealthData, fitnessLevel, location, timePerDay, language, t, user, loadSavedPlans]);
     
     const exerciseTypeColors: {[key: string]: string} = {
         'Cardio': 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
@@ -232,74 +235,7 @@ const ExercisePlanner: React.FC = () => {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up">
-            <div className="lg:col-span-1 space-y-6">
-                {/* User Notice for Non-Authenticated Users */}
-                {!user && (
-                    <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                        <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                                <Icon name="user" className="h-5 w-5" />
-                            </div>
-                            <div>
-                                <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                                    {t("exercisePlansNotSaved") || "Exercise plans won't be saved"}
-                                </p>
-                                <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
-                                    {t("loginToSavePlans") || "Log in to save your exercise plans and access them across devices."}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Saved Exercise Plans for Authenticated Users */}
-                {user && (
-                    <div className="bg-white dark:bg-zinc-900 p-4 sm:p-6 rounded-xl border border-gray-200/80 dark:border-zinc-800/80">
-                        <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">
-                            {t("savedExercisePlans") || "Saved Exercise Plans"}
-                        </h3>
-                        {loadingPlans ? (
-                            <div className="flex items-center justify-center py-8">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-500"></div>
-                                <span className="ml-3 text-gray-600 dark:text-gray-400 text-sm">
-                                    Loading...
-                                </span>
-                            </div>
-                        ) : savedPlans.length > 0 ? (
-                            <div className="space-y-3 max-h-64 overflow-y-auto">
-                                {savedPlans.map((savedPlan, index) => (
-                                    <div
-                                        key={savedPlan.id}
-                                        className="p-3 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
-                                    >
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex-1">
-                                                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                                    {savedPlan.goal
-                                                        .replace("-", " ")
-                                                        .replace(/\b\w/g, (l: string) =>
-                                                            l.toUpperCase()
-                                                        )}{" "}
-                                                    - {savedPlan.fitness_level}
-                                                </p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                    {new Date(savedPlan.created_at).toLocaleDateString()} •{" "}
-                                                    {savedPlan.location} • {savedPlan.time_per_day} min/day
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-4">
-                                {t("noSavedExercisePlans") || "No saved exercise plans yet."}
-                            </p>
-                        )}
-                    </div>
-                )}
-
-                {/* Generate Plan Form */}
+            <div className="lg:col-span-1">
                 <div className="bg-white dark:bg-zinc-900 p-4 sm:p-6 rounded-xl border border-gray-200/80 dark:border-zinc-800/80 sticky top-28 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
                     <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">{t('createYourExercisePlan')}</h3>
                     <form onSubmit={handleGeneratePlan} className="space-y-4">
