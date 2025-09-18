@@ -214,9 +214,9 @@ const HealthTracker: React.FC = () => {
 						const dbAdvice = await healthAdviceService.getAdvice(user.id, lang);
 						if (dbAdvice) {
 							const parsedAdvice: HealthAdvice = {
-								dietaryAdvice: dbAdvice.dietary_advice,
-								exerciseRecommendations: dbAdvice.exercise_recommendations,
-								lifestyleSuggestions: dbAdvice.lifestyle_suggestions,
+								dietaryAdvice: dbAdvice.dietary_advice as string[],
+								exerciseRecommendations: dbAdvice.exercise_recommendations as string[],
+								lifestyleSuggestions: dbAdvice.lifestyle_suggestions as string[],
 							};
 							setAdvice(parsedAdvice);
 							setIsLoadingAdvice(false);
@@ -237,6 +237,7 @@ const HealthTracker: React.FC = () => {
 						await healthAdviceService.addAdvice({
 							user_id: user.id,
 							language: lang,
+							based_on_entries_count: currentHistory.length,
 							dietary_advice: newAdvice.dietaryAdvice,
 							exercise_recommendations: newAdvice.exerciseRecommendations,
 							lifestyle_suggestions: newAdvice.lifestyleSuggestions,

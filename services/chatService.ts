@@ -71,7 +71,7 @@ export const chatService = {
 			.single();
 
 		if (error) throw error;
-		return data;
+		return data as ChatMessageDB;
 	},
 
 	// Get all messages for a session
@@ -83,7 +83,7 @@ export const chatService = {
 			.order("created_at", { ascending: true });
 
 		if (error) throw error;
-		return data || [];
+		return (data || []) as ChatMessageDB[];
 	},
 
 	// Update session name
